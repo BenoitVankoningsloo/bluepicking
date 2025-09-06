@@ -3212,7 +3212,7 @@
                 },
                 "fullDescription": {
                   "text": "Reports the parameters passed to a function call, whose types do not match the ones specified in the function definition via type declaration or the PHPDoc '@param' tag. See Type declarations (php.net) and @param (phpdoc.org) for details. Inspection ID: PhpParamsInspection",
-                  "markdown": "Reports the parameters passed to a function call, whose types do not match the ones specified in the function definition via type declaration or the PHPDoc `@param` tag.\n\nSee [Type declarations (php.net)](http://php.net/manual/en/functions.arguments.php#functions.arguments.type-declaration) and\n[@param (phpdoc.org)](https://docs.phpdoc.org/guide/references/phpdoc/tags/param.html#param) for details.\n\nInspection ID: PhpParamsInspection"
+                  "markdown": "Reports the parameters passed to a function call, whose types do not match the ones specified in the function definition via type declaration or the PHPDoc `@param` tag.\n\nSee [Type declarations (php.net)](https://php.net/manual/en/functions.arguments.php#functions.arguments.type-declaration) and\n[@param (phpdoc.org)](https://docs.phpdoc.org/guide/references/phpdoc/tags/param.html#param) for details.\n\nInspection ID: PhpParamsInspection"
                 },
                 "defaultConfiguration": {
                   "enabled": true,
@@ -4402,7 +4402,7 @@
                 },
                 "fullDescription": {
                   "text": "Reports the usages of the comparison operator ('==') for comparing object variables. Object variables are compared as follows: When using the comparison operator ('=='), two object instances are considered equal if they have the same attributes and values (values are compared with '=='), and are instances of the same class. When using the identity operator ('==='), object variables are considered identical if and only if they refer to the same instance of the same class. See Comparing Objects (php.net) for details. Inspection ID: PhpNonStrictObjectEqualityInspection",
-                  "markdown": "Reports the usages of the comparison operator (`==`) for comparing object variables.\n\n\nObject variables are compared as follows:\n\n* When using the comparison operator (`==`), two object instances are considered equal if they have the same attributes and values (values are compared with `==`), and are instances of the same class.\n* When using the identity operator (`===`), object variables are considered identical if and only if they refer to the same instance of the same class.\n\n\nSee [Comparing Objects (php.net)](http://www.php.net/manual/en/language.oop5.object-comparison.php) for details.\n\nInspection ID: PhpNonStrictObjectEqualityInspection"
+                  "markdown": "Reports the usages of the comparison operator (`==`) for comparing object variables.\n\n\nObject variables are compared as follows:\n\n* When using the comparison operator (`==`), two object instances are considered equal if they have the same attributes and values (values are compared with `==`), and are instances of the same class.\n* When using the identity operator (`===`), object variables are considered identical if and only if they refer to the same instance of the same class.\n\n\nSee [Comparing Objects (php.net)](https://www.php.net/manual/en/language.oop5.object-comparison.php) for details.\n\nInspection ID: PhpNonStrictObjectEqualityInspection"
                 },
                 "defaultConfiguration": {
                   "enabled": true,
@@ -7190,7 +7190,7 @@
                 },
                 "fullDescription": {
                   "text": "Reports the array keys that are of illegal type, such as objects or arrays. See Arrays (php.net) for details. Inspection ID: PhpIllegalArrayKeyTypeInspection",
-                  "markdown": "Reports the array keys that are of illegal type, such as objects or arrays.\n\n\nSee [Arrays (php.net)](http://www.php.net/manual/en/language.types.array.php) for details.\n\nInspection ID: PhpIllegalArrayKeyTypeInspection"
+                  "markdown": "Reports the array keys that are of illegal type, such as objects or arrays.\n\n\nSee [Arrays (php.net)](https://www.php.net/manual/en/language.types.array.php) for details.\n\nInspection ID: PhpIllegalArrayKeyTypeInspection"
                 },
                 "defaultConfiguration": {
                   "enabled": true,
@@ -8006,7 +8006,7 @@
                 },
                 "fullDescription": {
                   "text": "Reports the 'use' statements that contain non-fully qualified class names and thus have no effect. The inspection only reports classes imports; functions and constants imports are not considered. See Using namespaces: Aliasing/Importing (php.net) for details. Inspection ID: PhpNonCompoundUseInspection",
-                  "markdown": "Reports the `use` statements that contain non-fully qualified class names and thus have no effect. The inspection only reports classes imports; functions and constants imports are not considered.\n\n\nSee [Using namespaces: Aliasing/Importing (php.net)](http://www.php.net/manual/en/language.namespaces.importing.php#language.namespaces.importing) for details.\n\nInspection ID: PhpNonCompoundUseInspection"
+                  "markdown": "Reports the `use` statements that contain non-fully qualified class names and thus have no effect. The inspection only reports classes imports; functions and constants imports are not considered.\n\n\nSee [Using namespaces: Aliasing/Importing (php.net)](https://www.php.net/manual/en/language.namespaces.importing.php#language.namespaces.importing) for details.\n\nInspection ID: PhpNonCompoundUseInspection"
                 },
                 "defaultConfiguration": {
                   "enabled": false,
@@ -9196,7 +9196,7 @@
                 },
                 "fullDescription": {
                   "text": "Reports the optional parameters that appear before the required parameters in a function/method declaration. See Default argument values (php.net) for details. Inspection ID: PhpOptionalBeforeRequiredParametersInspection",
-                  "markdown": "Reports the optional parameters that appear before the required parameters in a function/method declaration.\n\n\nSee [Default argument values (php.net)](http://www.php.net/manual/en/functions.arguments.php#functions.arguments.default) for details.\n\nInspection ID: PhpOptionalBeforeRequiredParametersInspection"
+                  "markdown": "Reports the optional parameters that appear before the required parameters in a function/method declaration.\n\n\nSee [Default argument values (php.net)](https://www.php.net/manual/en/functions.arguments.php#functions.arguments.default) for details.\n\nInspection ID: PhpOptionalBeforeRequiredParametersInspection"
                 },
                 "defaultConfiguration": {
                   "enabled": true,
@@ -10250,7 +10250,7 @@
                 },
                 "fullDescription": {
                   "text": "Reports the exceptions that are already caught by a preceding exception and the exceptions that are caught twice. The 'catch' clauses must be ordered from more specific to more generic ones. Otherwise, some exceptions may not be caught by the most specific handler. See Exceptions (php.net) for details. Inspection ID: PhpWrongCatchClausesOrderInspection",
-                  "markdown": "Reports the exceptions that are already caught by a preceding exception and the exceptions that are caught twice.\n\n\nThe `catch` clauses must be ordered from more specific to more generic ones. Otherwise, some exceptions may not be caught by the most specific handler.\n\n\nSee [Exceptions (php.net)](http://www.php.net/manual/en/language.exceptions.php) for details.\n\nInspection ID: PhpWrongCatchClausesOrderInspection"
+                  "markdown": "Reports the exceptions that are already caught by a preceding exception and the exceptions that are caught twice.\n\n\nThe `catch` clauses must be ordered from more specific to more generic ones. Otherwise, some exceptions may not be caught by the most specific handler.\n\n\nSee [Exceptions (php.net)](https://www.php.net/manual/en/language.exceptions.php) for details.\n\nInspection ID: PhpWrongCatchClausesOrderInspection"
                 },
                 "defaultConfiguration": {
                   "enabled": true,
@@ -14806,7 +14806,7 @@
                 },
                 "fullDescription": {
                   "text": "Reports the 'foreach' constructs used on variables of the 'string', 'float', 'int', or 'boolean' type. See foreach (php.net) for details. Inspection ID: PhpWrongForeachArgumentTypeInspection",
-                  "markdown": "Reports the `foreach` constructs used on variables of the `string`, `float`, `int`, or `boolean` type.\n\n\nSee [foreach (php.net)](http://www.php.net/manual/en/control-structures.foreach.php) for details.\n\nInspection ID: PhpWrongForeachArgumentTypeInspection"
+                  "markdown": "Reports the `foreach` constructs used on variables of the `string`, `float`, `int`, or `boolean` type.\n\n\nSee [foreach (php.net)](https://www.php.net/manual/en/control-structures.foreach.php) for details.\n\nInspection ID: PhpWrongForeachArgumentTypeInspection"
                 },
                 "defaultConfiguration": {
                   "enabled": true,
@@ -21214,7 +21214,7 @@
                 },
                 "fullDescription": {
                   "text": "Asset not found. See Symfony documentation for more information Inspection ID: TwigAssetMissingInspection",
-                  "markdown": "Asset not found. See [Symfony documentation](http://symfony.com/doc/current/assetic/asset_management.html?phpstorm) for more information\n\nInspection ID: TwigAssetMissingInspection"
+                  "markdown": "Asset not found. See [Symfony documentation](https://symfony.com/doc/current/assetic/asset_management.html?phpstorm) for more information\n\nInspection ID: TwigAssetMissingInspection"
                 },
                 "defaultConfiguration": {
                   "enabled": false,
@@ -22778,7 +22778,7 @@
                 },
                 "fullDescription": {
                   "text": "Tagged service is missing extends or interface statement See more on Symfony2 doc: The Dependency Injection Tags Inspection ID: TaggedExtendsInterfaceClassXml",
-                  "markdown": "Tagged service is missing extends or interface statement See more on Symfony2 doc: [The Dependency Injection Tags](http://symfony.com/doc/current/reference/dic_tags.html)\n\nInspection ID: TaggedExtendsInterfaceClassXml"
+                  "markdown": "Tagged service is missing extends or interface statement See more on Symfony2 doc: [The Dependency Injection Tags](https://symfony.com/doc/current/reference/dic_tags.html)\n\nInspection ID: TaggedExtendsInterfaceClassXml"
                 },
                 "defaultConfiguration": {
                   "enabled": false,
@@ -22880,7 +22880,7 @@
                 },
                 "fullDescription": {
                   "text": "Asset not found. See Symfony documentation for more information Inspection ID: TwigAssetsTagMissingInspection",
-                  "markdown": "Asset not found. See [Symfony documentation](http://symfony.com/doc/current/templating.html?phpstorm#linking-to-assets) for more information\n\nInspection ID: TwigAssetsTagMissingInspection"
+                  "markdown": "Asset not found. See [Symfony documentation](https://symfony.com/doc/current/templating.html?phpstorm#linking-to-assets) for more information\n\nInspection ID: TwigAssetsTagMissingInspection"
                 },
                 "defaultConfiguration": {
                   "enabled": false,
@@ -22948,7 +22948,7 @@
                 },
                 "fullDescription": {
                   "text": "Tagged service is missing extends or interface statement See more on Symfony2 doc: The Dependency Injection Tags Inspection ID: TaggedExtendsInterfaceClassYaml",
-                  "markdown": "Tagged service is missing extends or interface statement See more on Symfony2 doc: [The Dependency Injection Tags](http://symfony.com/doc/current/reference/dic_tags.html)\n\nInspection ID: TaggedExtendsInterfaceClassYaml"
+                  "markdown": "Tagged service is missing extends or interface statement See more on Symfony2 doc: [The Dependency Injection Tags](https://symfony.com/doc/current/reference/dic_tags.html)\n\nInspection ID: TaggedExtendsInterfaceClassYaml"
                 },
                 "defaultConfiguration": {
                   "enabled": false,
@@ -23288,7 +23288,7 @@
                 },
                 "fullDescription": {
                   "text": "Asset not found. See Symfony documentation for more information Inspection ID: PhpAssetMissingInspection",
-                  "markdown": "Asset not found. See [Symfony documentation](http://symfony.com/doc/current/assetic/asset_management.html?phpstorm) for more information\n\nInspection ID: PhpAssetMissingInspection"
+                  "markdown": "Asset not found. See [Symfony documentation](https://symfony.com/doc/current/assetic/asset_management.html?phpstorm) for more information\n\nInspection ID: PhpAssetMissingInspection"
                 },
                 "defaultConfiguration": {
                   "enabled": false,
@@ -32130,7 +32130,7 @@
                 },
                 "fullDescription": {
                   "text": "Reports a redundant usage of 'await', such as 'await await', or awaiting a non-promise result. When the 'Report for promises' option is selected, suggests removing 'await' before promises when applicable (in 'return' statements, and with 'Promise.resolve/reject'). Removing 'await' in such contexts causes two problems. Surrounding your code with 'try-catch' and forgetting to add 'await' will change code semantics while you may fail to notice that. Having an explicit 'await' may prevent the V8 runtime from providing async stack traces. Inspection ID: ES6RedundantAwait",
-                  "markdown": "Reports a redundant usage of `await`, such as `await await`, or awaiting a non-promise result.\n\n\nWhen the 'Report for promises' option is selected, suggests removing `await` before promises when applicable\n(in `return` statements, and with `Promise.resolve/reject`).\n\nRemoving `await` in such contexts causes two problems.\n\n* Surrounding your code with `try-catch` and forgetting to add `await` will change code semantics while you may fail to notice that.\n* Having an explicit `await` may prevent the V8 runtime from providing [async stack traces](http://bit.ly/v8-zero-cost-async-stack-traces).\n\nInspection ID: ES6RedundantAwait"
+                  "markdown": "Reports a redundant usage of `await`, such as `await await`, or awaiting a non-promise result.\n\n\nWhen the 'Report for promises' option is selected, suggests removing `await` before promises when applicable\n(in `return` statements, and with `Promise.resolve/reject`).\n\nRemoving `await` in such contexts causes two problems.\n\n* Surrounding your code with `try-catch` and forgetting to add `await` will change code semantics while you may fail to notice that.\n* Having an explicit `await` may prevent the V8 runtime from providing [async stack traces](https://bit.ly/v8-zero-cost-async-stack-traces).\n\nInspection ID: ES6RedundantAwait"
                 },
                 "defaultConfiguration": {
                   "enabled": true,
@@ -37000,7 +37000,7 @@
                 },
                 "fullDescription": {
                   "text": "Reports a reference to a Less variable that is not resolved. Example: '* {\n  margin: @unknown-var;\n}' Inspection ID: LessUnresolvedVariable",
-                  "markdown": "Reports a reference to a [Less variable](http://lesscss.org/features/#variables-feature) that is not resolved.\n\n**Example:**\n\n\n    * {\n      margin: @unknown-var;\n    }\n\nInspection ID: LessUnresolvedVariable"
+                  "markdown": "Reports a reference to a [Less variable](https://lesscss.org/features/#variables-feature) that is not resolved.\n\n**Example:**\n\n\n    * {\n      margin: @unknown-var;\n    }\n\nInspection ID: LessUnresolvedVariable"
                 },
                 "defaultConfiguration": {
                   "enabled": false,
@@ -37034,7 +37034,7 @@
                 },
                 "fullDescription": {
                   "text": "Reports a reference to a variable or mixin that is declared in another file, which is not explicitly imported in the current file. Example: '* {\n  margin: @var-in-other-file;\n}' Inspection ID: LessResolvedByNameOnly",
-                  "markdown": "Reports a reference to a variable or mixin that is declared in another file, which is not explicitly [imported](http://lesscss.org/features/#import-atrules-feature) in the current file.\n\n**Example:**\n\n\n    * {\n      margin: @var-in-other-file;\n    }\n\nInspection ID: LessResolvedByNameOnly"
+                  "markdown": "Reports a reference to a variable or mixin that is declared in another file, which is not explicitly [imported](https://lesscss.org/features/#import-atrules-feature) in the current file.\n\n**Example:**\n\n\n    * {\n      margin: @var-in-other-file;\n    }\n\nInspection ID: LessResolvedByNameOnly"
                 },
                 "defaultConfiguration": {
                   "enabled": false,
@@ -37068,7 +37068,7 @@
                 },
                 "fullDescription": {
                   "text": "Reports a reference to a Less mixin that is not resolved. Example: '* {\n  .unknown-mixin();\n}' Inspection ID: LessUnresolvedMixin",
-                  "markdown": "Reports a reference to a [Less mixin](http://lesscss.org/features/#mixins-feature) that is not resolved.\n\n**Example:**\n\n\n    * {\n      .unknown-mixin();\n    }\n\nInspection ID: LessUnresolvedMixin"
+                  "markdown": "Reports a reference to a [Less mixin](https://lesscss.org/features/#mixins-feature) that is not resolved.\n\n**Example:**\n\n\n    * {\n      .unknown-mixin();\n    }\n\nInspection ID: LessUnresolvedMixin"
                 },
                 "defaultConfiguration": {
                   "enabled": false,
@@ -39174,7 +39174,7 @@
                 },
                 "fullDescription": {
                   "text": "Reports inconsistency with the language specification in a JSON5 file. Inspection ID: Json5StandardCompliance",
-                  "markdown": "Reports inconsistency with [the language specification](http://json5.org) in a JSON5 file.\n\nInspection ID: Json5StandardCompliance"
+                  "markdown": "Reports inconsistency with [the language specification](https://json5.org) in a JSON5 file.\n\nInspection ID: Json5StandardCompliance"
                 },
                 "defaultConfiguration": {
                   "enabled": false,
@@ -40098,7 +40098,7 @@
                 },
                 "fullDescription": {
                   "text": "Reports a discrepancy detected by the Stylelint linter. The highlighting is based on the rule severity specified in the Stylelint configuration file for each individual rule. Inspection ID: Stylelint",
-                  "markdown": "Reports a discrepancy detected by the [Stylelint](http://stylelint.io) linter.   \n\nThe highlighting is based on the rule severity specified in the [Stylelint configuration file](https://stylelint.io/user-guide/configure) for each individual rule.\n\nInspection ID: Stylelint"
+                  "markdown": "Reports a discrepancy detected by the [Stylelint](https://stylelint.io) linter.   \n\nThe highlighting is based on the rule severity specified in the [Stylelint configuration file](https://stylelint.io/user-guide/configure) for each individual rule.\n\nInspection ID: Stylelint"
                 },
                 "defaultConfiguration": {
                   "enabled": false,
