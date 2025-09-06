@@ -1,0 +1,48 @@
+{% extends 'base.html.twig' %}
+{% block title %}Message #{{ contact.id }} — Admin{% endblock %}
+
+{% block body %}
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <h1 class="h4 mb-0">Message #{{ contact.id }}</h1>
+    <a class="btn btn-sm btn-outline-secondary" href="{{ path('admin_contacts') }}">← Retour</a>
+  </div>
+
+  <div class="card">
+    <div class="card-body">
+      <dl class="row">
+        <dt class="col-sm-3">Nom</dt>
+        <dd class="col-sm-9">
+          {% set displayName =
+            (contact.name ?? null) ?: ((contact.firstName ?? '') ~ ' ' ~ (contact.lastName ?? ''))|trim
+          %}
+          {{ displayName ?: (contact.email ?? contact.id) }}
+        </dd>
+
+        <dt class="col-sm-3">Email</dt>
+        <dd class="col-sm-9">
+          {% if contact.email is defined and contact.email %}
+            <a href="mailto:{{ contact.email }}">{{ contact.email }}</a>
+          {% else %}
+            <span class="text-muted">—</span>
+          {% endif %}
+        </dd>
+
+        <dt class="col-sm-3">Reçu le</dt>
+        <dd class="col-sm-9">
+          {% if contact.createdAt is defined and contact.createdAt %}
+            <time datetime="{{ contact.createdAt|date('c') }}">{{ contact.createdAt|date('Y-m-d H:i') }}</time>
+          {% else %}
+            <span class="text-muted">—</span>
+          {% endif %}
+        </dd>
+
+        <dt class="col-sm-3">Message</dt>
+        <dd class="col-sm-9">
+          {% set txt = contact.message ?? contact.notes ?? contact.content ?? '' %}
+          <pre class="mb-0">{{ txt }}</pre>
+        </dd>
+      </dl>
+    </div>
+  </div>
+{% endblock %}
+

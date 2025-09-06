@@ -1,0 +1,15 @@
+<h2>Nouveau message de contact #{{ contact_id }}</h2>
+
+<ul>
+  <li><strong>Nom</strong> : {{ contact_name ?: '(non fourni)' }}</li>
+  <li><strong>Email</strong> : {{ contact_email ?: '(non fourni)' }}</li>
+  <li><strong>Téléphone</strong> : {{ contact_phone ?: '(non fourni)' }}</li>
+  <li><strong>Société</strong> : {{ contact_company ?: '(non fourni)' }}</li>
+  <li><strong>Sujet</strong> : {{ contact_subject ?: '(non fourni)' }}</li>
+  <li><strong>Date</strong> : {{ submitted_at ?: '(n/a)' }}</li>
+</ul>
+
+<hr>
+<p><strong>Message</strong> :</p>
+<pre style="white-space: pre-wrap; font-family: inherit">{{ contact_body ?: '(vide)' }}</pre>
+

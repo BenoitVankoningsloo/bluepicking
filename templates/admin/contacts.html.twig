@@ -1,0 +1,139 @@
+{% extends 'base.html.twig' %}
+{% block title %}Contacts — Admin{% endblock %}
+
+{% block body %}
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <h1 class="h3 mb-0">Messages de contact</h1>
+
+    {% set q           = app.request.query.get('q')|default('') %}
+    {% set currentSort = app.request.query.get('sort')|default('createdAt') %}
+    {% set currentDir  = app.request.query.get('dir')|default('DESC') %}
+
+    <a class="btn btn-sm btn-outline-primary"
+       href="{{ path('admin_contacts_export', { q: q, sort: currentSort, dir: currentDir }) }}">
+      Export CSV
+    </a>
+  </div>
+
+  <form method="get"
+        action="{{ path('admin_contacts') }}"
+        class="admin-toolbar-center d-flex align-items-center justify-content-between gap-2 flex-wrap mb-3">
+
+    <div class="flex-grow-1 d-flex justify-content-center">
+      <input
+        type="search"
+        id="q"
+        name="q"
+        value="{{ q }}"
+        class="form-control form-control-w-560 form-control-tall"
+        placeholder="Rechercher (nom, email, message…)">
+      <input type="hidden" name="sort" value="{{ currentSort }}">
+      <input type="hidden" name="dir"  value="{{ currentDir }}">
+    </div>
+
+    <div class="ms-0 ms-sm-2">
+      <a class="btn btn-sm btn-outline-secondary" href="{{ path('admin_contacts') }}">Réinitialiser</a>
+    </div>
+  </form>
+
+  {% set sort = currentSort %}
+  {% set dir  = currentDir %}
+
+  {% set dirId       = (sort == 'id'        and dir == 'ASC') ? 'DESC' : 'ASC' %}
+  {% set dirName     = (sort == 'name'      and dir == 'ASC') ? 'DESC' : 'ASC' %}
+  {% set dirEmail    = (sort == 'email'     and dir == 'ASC') ? 'DESC' : 'ASC' %}
+  {% set dirCreated  = (sort == 'createdAt' and dir == 'ASC') ? 'DESC' : 'ASC' %}
+
+  <div class="table-responsive">
+    <table class="table table-hover align-middle">
+      <thead>
+        <tr>
+          <th>
+            <a href="{{ path('admin_contacts', app.request.query.all|merge({'sort':'id','dir':dirId})) }}">
+              ID{% if sort == 'id' %} {% if dir == 'ASC' %}▲{% else %}▼{% endif %}{% endif %}
+            </a>
+          </th>
+          <th>
+            <a href="{{ path('admin_contacts', app.request.query.all|merge({'sort':'name','dir':dirName})) }}">
+              Nom{% if sort == 'name' %} {% if dir == 'ASC' %}▲{% else %}▼{% endif %}{% endif %}
+            </a>
+          </th>
+          <th>
+            <a href="{{ path('admin_contacts', app.request.query.all|merge({'sort':'email','dir':dirEmail})) }}">
+              Email{% if sort == 'email' %} {% if dir == 'ASC' %}▲{% else %}▼{% endif %}{% endif %}
+            </a>
+          </th>
+          <th>
+            <a href="{{ path('admin_contacts', app.request.query.all|merge({'sort':'createdAt','dir':dirCreated})) }}">
+              Reçu le{% if sort == 'createdAt' %} {% if dir == 'ASC' %}▲{% else %}▼{% endif %}{% endif %}
+            </a>
+          </th>
+          <th class="text-end">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% set rows = pagination is defined ? pagination : (contacts is defined ? contacts : []) %}
+
+        {% for c in rows %}
+          <tr>
+            <td>{{ c.id }}</td>
+
+            <td class="text-truncate" style="max-width: 220px">
+              {# name ou combinaison firstName+lastName #}
+              {% set displayName =
+                c.name is defined and c.name ? c.name :
+                ((c.firstName is defined ? c.firstName ~ ' ' : '') ~ (c.lastName is defined ? c.lastName : ''))|trim
+              %}
+              {{ displayName ?: (c.email is defined ? c.email : c.id) }}
+            </td>
+
+            <td class="text-truncate" style="max-width: 260px">
+              {% if c.email is defined and c.email %}
+                <a href="mailto:{{ c.email }}">{{ c.email }}</a>
+              {% else %}
+                <span class="text-muted">—</span>
+              {% endif %}
+            </td>
+
+            <td>
+              {% if c.createdAt is defined and c.createdAt %}
+                <time datetime="{{ c.createdAt|date('c') }}">{{ c.createdAt|date('Y-m-d H:i') }}</time>
+              {% else %}
+                <span class="text-muted">—</span>
+              {% endif %}
+            </td>
+
+            <td class="text-end">
+              <a class="btn btn-sm btn-outline-secondary me-1"
+                 href="{{ path('admin_contact_show', {id: c.id}) }}"
+                 title="Voir">Voir</a>
+
+              <form method="post"
+                    action="{{ path('admin_contact_delete', {id: c.id}) }}"
+                    class="d-inline js-confirm-delete"
+                    data-confirm="Supprimer ce message ? Cette action est irréversible.">
+                <input type="hidden" name="_token" value="{{ csrf_token('delete_contact_' ~ c.id) }}">
+                <button class="btn btn-ghost-danger" title="Supprimer" aria-label="Supprimer">&times;</button>
+              </form>
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="5" class="text-center text-muted">Aucun message</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if pagination is defined %}
+    <div class="d-flex justify-content-center">
+      {{ knp_pagination_render(pagination) }}
+    </div>
+  {% endif %}
+{% endblock %}
+
+{% block javascripts %}
+  {{ parent() }}
+  <script defer src="{{ asset('assets/js/admin-search.js') }}"></script>
+  <script defer src="{{ asset('assets/js/admin-contacts.js') }}"></script>
+{% endblock %}
+

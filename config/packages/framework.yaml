@@ -1,0 +1,19 @@
+framework:
+  secret: '%env(APP_SECRET)%'
+  csrf_protection: true
+  form: true
+  validation: { enable_attributes: true }
+  translator: { fallbacks: ['fr'] }
+
+  # >>> SESSIONS ACTIVÉES <<<
+  session:
+    handler_id: null                  # session native PHP
+    storage_factory_id: session.storage.factory.native
+    cookie_secure: auto   # "auto" pour dev HTTP; mets "true" en prod HTTPS strict
+    cookie_samesite: lax
+    cookie_httponly: true
+
+# ... le reste (secret, session, etc.)
+  assets:
+    version: 'v1'                  # change la valeur à chaque release
+    version_format: '%%s?%%s'      # app.css?v1

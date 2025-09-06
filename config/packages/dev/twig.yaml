@@ -1,0 +1,4 @@
+# config/packages/dev/twig.yaml
+twig:
+  strict_variables: true
+

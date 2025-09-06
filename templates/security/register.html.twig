@@ -1,0 +1,44 @@
+{% extends 'base.html.twig' %}
+{% block title %}Inscription{% endblock %}
+{% form_theme registrationForm 'bootstrap_5_layout.html.twig' %}
+
+{% block body %}
+<h1 class="mb-3">Créer un compte</h1>
+
+<div class="row justify-content-center">
+  <div class="col-md-7 col-lg-6">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        {{ form_start(registrationForm) }}
+
+          <div class="row">
+            <div class="col-md-6">
+              {{ form_row(registrationForm.name) }}
+            </div>
+            <div class="col-md-6">
+              {{ form_row(registrationForm.email) }}
+            </div>
+          </div>
+
+          {{ form_row(registrationForm.plainPassword) }}
+
+          <div class="mb-3">
+            <div class="g-recaptcha" data-sitekey="{{ recaptcha_site_key|default('') }}"></div>
+          </div>
+
+          <div class="form-actions mt-3">
+            <button class="btn btn-primary btn-lg">S’inscrire</button>
+          </div>
+
+        {{ form_end(registrationForm) }}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block javascripts %}
+  {{ parent() }}
+  <script src="https://www.google.com/recaptcha/api.js" async defer></script>
+{% endblock %}
+

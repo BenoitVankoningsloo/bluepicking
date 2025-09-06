@@ -1,0 +1,43 @@
+parameters:
+    env(RECAPTCHA_SITE_KEY): ''
+    env(RECAPTCHA_SECRET_KEY): ''
+
+    app.recaptcha_site_key: '%env(string:RECAPTCHA_SITE_KEY)%'
+    app.recaptcha_secret_key: '%env(string:RECAPTCHA_SECRET_KEY)%'
+
+# Paramètres canoniques (utilisés par le code)
+    app.mailer.from: '%env(string:CONTACT_FROM_EMAIL)%'
+    app.contact.to: '%env(string:CONTACT_TO)%'
+    app.contact.email_enabled: '%env(bool:CONTACT_EMAIL_ENABLED)%'
+
+  # (Optionnel) Alias rétro-compat si quelque chose dans ton projet utilise encore "app.contact_to"
+    app.contact_to: '%app.contact.to%'
+
+services:
+    _defaults:
+        autowire: true
+        autoconfigure: true
+
+    App\:
+        resource: '../src/'
+        exclude:
+            - '../src/DependencyInjection/'
+            - '../src/Entity/'
+            - '../src/Kernel.php'
+
+    App\Controller\:
+        resource: '../src/Controller/'
+        tags: ['controller.service_arguments']
+
+    App\Security\RecaptchaVerifier:
+        arguments:
+            $secretKey: '%app.recaptcha_secret_key%'
+
+    App\Service\ContactEmailer:
+        arguments:
+            $fromAddress: '%app.mailer.from%'
+            $toAddress: '%app.contact.to%'
+            $enabled: '%app.contact.email_enabled%'
+
+#    Symfony\Bundle\FrameworkBundle\Command\DumpEnvCommand:
+#        tags: ['console.command']

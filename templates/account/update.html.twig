@@ -1,0 +1,14 @@
+{% extends 'base.html.twig' %}
+{% block title %}Modifier mon profil{% endblock %}
+{% block body %}
+<h1 class="mb-3">Modifier mon profil</h1>
+<div class="card">
+  <div class="card-body">
+    {{ form_start(form) }}
+      {{ form_widget(form) }}
+      <button class="btn btn-primary mt-2">Enregistrer</button>
+    {{ form_end(form) }}
+  </div>
+</div>
+{% endblock %}
+

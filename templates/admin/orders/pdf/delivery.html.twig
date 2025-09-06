@@ -1,0 +1,51 @@
+{% extends 'pdf/base.html.twig' %}
+{% block styles %}
+<style>
+  @page { size: A4; margin: 12mm; }
+  .box { border:1px solid #dee2e6; padding:8px; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="h1">Bon de livraison</div>
+<div class="row mb-3">
+  <div class="col box">
+    <div class="h2">Destinataire</div>
+    <div>{{ (meta.ship_name ?? o.customer_name) ?: '—' }}</div>
+    <div>{{ meta.ship_address1 ?? '' }}</div>
+    <div>{{ meta.ship_address2 ?? '' }}</div>
+    <div>{{ (meta.ship_postcode ~ ' ' ~ (meta.ship_city ?? ''))|trim }}</div>
+    <div>{{ meta.ship_country ?? '' }}</div>
+    {% if meta.ship_phone %}<div class="small">☎ {{ meta.ship_phone }}</div>{% endif %}
+  </div>
+  <div class="col">
+    <table>
+      <tr><th style="width:40%;">Commande</th><td>{{ o.external_order_id ?? o.id }}</td></tr>
+      <tr><th>Date</th><td>{{ (o.placed_at ?? 'now')|date('Y-m-d H:i') }}</td></tr>
+      <tr><th>Transport</th><td>{{ carrier ~ (service ? ' · ' ~ service : '') }}</td></tr>
+      <tr><th>Tracking</th><td>{{ o.tracking_number ?? '—' }}</td></tr>
+      <tr><th>Colis</th><td>{{ meta.parcels_count ?? 1 }} ({{ meta.package_ref ?? '—' }})</td></tr>
+    </table>
+  </div>
+</div>
+<table>
+  <thead><tr><th style="width:20%;">SKU</th><th>Désignation</th><th class="text-end" style="width:10%;">Qté</th></tr></thead>
+  <tbody>
+  {% if lines is not empty %}
+    {% for l in lines %}
+      <tr>
+        <td><code>{{ l.sku }}</code></td>
+        <td>{{ l.name }}</td>
+        <td class="text-end">{{ l.qty }}</td>
+      </tr>
+    {% endfor %}
+  {% else %}
+      <tr><td colspan="3" class="muted">Aucune ligne de commande disponible.</td></tr>
+  {% endif %}
+  </tbody>
+</table>
+<div class="row mb-3">
+  <div class="col small">Préparé par : {{ meta.prepared_by ?? '—' }} · {{ meta.prepared_at ? meta.prepared_at|date('Y-m-d H:i') : '' }}</div>
+  <div class="col small text-end">Signature réceptionnaire : ____________________</div>
+</div>
+{% endblock %}
+

@@ -1,0 +1,58 @@
+{% extends 'pdf/base.html.twig' %}
+{% block styles %}
+<style>
+  @page { size: A4; margin: 12mm; }
+  .header { display:flex; justify-content:space-between; align-items:flex-start; }
+  .badge { border:1px solid #ccc; padding:2px 6px; border-radius:3px; background:#f0f0f0; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="h1">Picking · Commande {{ o.external_order_id ?? o.id }}</div>
+<div class="header mb-3">
+  <div>
+    <div>Statut : <span class="badge">{{ o.status }}</span> · Source : {{ o.source }}</div>
+    <div>Transport : {{ carrier ~ (service ? ' · ' ~ service : '') }}</div>
+  </div>
+  <div class="text-end">
+    <div>Date : {{ "now"|date('Y-m-d H:i') }}</div>
+    <div>Préparateur : {{ meta.prepared_by ?? '—' }}</div>
+    <div>Réf colis : {{ meta.package_ref ?? '—' }} · Nb colis : {{ meta.parcels_count ?? 1 }}</div>
+  </div>
+</div>
+{% if lines is not empty %}
+<table>
+  <thead>
+    <tr>
+      <th style="width:20%;">SKU</th>
+      <th>Article</th>
+      <th class="text-end" style="width:10%;">Qté</th>
+      <th class="text-end" style="width:15%;">PU ({{ o.currency }})</th>
+      <th class="text-end" style="width:15%;">Total ({{ o.currency }})</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% set total = 0 %}
+    {% for l in lines %}
+      {% set row_total = (l.unit_price ?? 0) * l.qty %}
+      {% set total = total + row_total %}
+      <tr>
+        <td><code>{{ l.sku }}</code></td>
+        <td>{{ l.name }}</td>
+        <td class="text-end">{{ l.qty }}</td>
+        <td class="text-end">{{ (l.unit_price ?? 0)|number_format(2, ',', ' ') }}</td>
+        <td class="text-end">{{ row_total|number_format(2, ',', ' ') }}</td>
+      </tr>
+    {% endfor %}
+  </tbody>
+  <tfoot>
+    <tr>
+      <th colspan="4" class="text-end">Total picking</th>
+      <th class="text-end">{{ total|number_format(2, ',', ' ') }}</th>
+    </tr>
+  </tfoot>
+</table>
+{% else %}
+  <div class="muted">Aucune ligne (sales_order_lines) — picking indicatif.</div>
+{% endif %}
+{% endblock %}
+

@@ -1,0 +1,84 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Produits{% endblock %}
+
+{% block body %}
+<style>
+.table th a { text-decoration: none; }
+.badge { padding: .4em .6em; border-radius: .25rem; }
+.badge.on { background: #e6ffed; color: #076e1a; border: 1px solid #76c686; }
+.badge.off{ background: #ffecec; color: #8e0d0d; border: 1px solid #e19f9f; }
+.filters .form-control, .filters .form-select { max-width: 260px; display: inline-block; }
+</style>
+
+{% macro sort_link(label, col, sort, dir) %}
+  {% set newDir = (sort == col and dir == 'asc') ? 'desc' : 'asc' %}
+  {% set qs = app.request.query.all | merge({'sort': col, 'dir': newDir, 'page': 1}) %}
+  <a href="{{ path(app.request.attributes.get('_route'), qs) }}">{{ label }}
+    {% if sort == col %} {{ dir == 'asc' ? '▲' : '▼' }} {% endif %}
+  </a>
+{% endmacro %}
+{% import _self as self %}
+
+<div class="container py-4">
+  <h1 class="mb-3">Produits</h1>
+
+  <form method="get" class="filters mb-3">
+    <input type="text" name="q" class="form-control" placeholder="Rechercher (SKU, nom, catégorie)" value="{{ q }}">
+    <select name="active" class="form-select ms-2">
+      <option value="" {{ active is null or active == '' ? 'selected' }}>Actifs + Inactifs</option>
+      <option value="1" {{ active == '1' ? 'selected' }}>Actifs</option>
+      <option value="0" {{ active == '0' ? 'selected' }}>Inactifs</option>
+    </select>
+    <input type="number" name="per_page" class="form-control ms-2" min="5" max="200" value="{{ per_page }}" title="Par page">
+    <button class="btn btn-primary ms-2">Filtrer</button>
+    {% if q or (active is not null and active != '') %}
+      <a class="btn btn-link ms-2" href="{{ path(app.request.attributes.get('_route')) }}">Réinitialiser</a>
+    {% endif %}
+  </form>
+
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <div><strong>{{ total }}</strong> résultat{{ total>1?'s':'' }}</div>
+    {% include 'admin/_pagination.html.twig' %}
+  </div>
+
+  <div class="table-responsive">
+    <table class="table table-striped align-middle">
+      <thead>
+        <tr>
+          <th>{{ self.sort_link('SKU', 'sku', sort, dir) }}</th>
+          <th>{{ self.sort_link('Nom', 'name', sort, dir) }}</th>
+          <th>{{ self.sort_link('Catégorie', 'category', sort, dir) }}</th>
+          <th class="text-end">{{ self.sort_link('Prix', 'price', sort, dir) }}</th>
+          <th class="text-end">{{ self.sort_link('Stock', 'stock_qty', sort, dir) }}</th>
+          <th>{{ self.sort_link('Actif', 'is_active', sort, dir) }}</th>
+          <th>{{ self.sort_link('Maj', 'updated_at', sort, dir) }}</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for p in items %}
+        <tr>
+          <td><code>{{ p.sku }}</code></td>
+          <td>{{ p.name }}</td>
+          <td>{{ p.category }}</td>
+          <td class="text-end">
+            {{ p.price|number_format(2, ',', ' ') }} {{ p.currency }}
+          </td>
+          <td class="text-end">{{ p.stock_qty }}</td>
+          <td>
+            {% set on = p.is_active ? true : false %}
+            <span class="badge {{ on ? 'on' : 'off' }}">{{ on ? 'Actif' : 'Inactif' }}</span>
+          </td>
+          <td>{{ p.updated_at ? p.updated_at|date('Y-m-d H:i') : '' }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="7" class="text-center text-muted">Aucun produit.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% include 'admin/_pagination.html.twig' %}
+</div>
+{% endblock %}
+

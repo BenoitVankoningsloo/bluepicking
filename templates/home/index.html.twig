@@ -1,0 +1,40 @@
+{% extends 'base.html.twig' %}
+{% block title %}Accueil{% endblock %}
+
+{% block body %}
+  <h1 class="mb-4">Bienvenue</h1>
+
+  <div class="row g-3">
+    <div class="col-md-4">
+      <a class="text-decoration-none" href="{{ path('page1') }}">
+        <div class="card h-100">
+          <div class="card-body">
+            <h5 class="card-title mb-2">Page 1</h5>
+            <p class="card-text text-muted">Exemple de page statique.</p>
+          </div>
+        </div>
+      </a>
+    </div>
+    <div class="col-md-4">
+      <a class="text-decoration-none" href="{{ path('page2') }}">
+        <div class="card h-100">
+          <div class="card-body">
+            <h5 class="card-title mb-2">Page 2</h5>
+            <p class="card-text text-muted">Exemple de page statique.</p>
+          </div>
+        </div>
+      </a>
+    </div>
+    <div class="col-md-4">
+      <a class="text-decoration-none" href="{{ path('page3') }}">
+        <div class="card h-100">
+          <div class="card-body">
+            <h5 class="card-title mb-2">Page 3</h5>
+            <p class="card-text text-muted">Exemple de page statique.</p>
+          </div>
+        </div>
+      </a>
+    </div>
+  </div>
+{% endblock %}
+

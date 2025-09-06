@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}BluePicking{% endblock %}</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 128 128%22><text y=%221.2em%22 font-size=%2296%22>🧭</text></svg>">
+
+    {# Bootstrap local #}
+    <link rel="stylesheet" href="{{ asset('assets/bootstrap/bootstrap.min.css') }}">
+    {# Thème global #}
+    <link rel="stylesheet" href="{{ asset('assets/css/theme.css') }}">
+
+    {% block styles %}{% endblock %}
+  </head>
+  <body class="d-flex flex-column min-vh-100">
+    <nav class="navbar navbar-expand-lg navbar-light bg-light border-bottom sticky-top">
+      <div class="container">
+        <a class="navbar-brand fw-semibold" href="{{ path('home') }}">BluePicking</a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav"
+                aria-controls="mainNav" aria-expanded="false" aria-label="Menu">
+          <span class="navbar-toggler-icon"></span>
+        </button>
+
+        <div id="mainNav" class="collapse navbar-collapse">
+          <ul class="navbar-nav me-auto">
+            <li class="nav-item"><a class="nav-link" href="{{ path('home') }}">Accueil</a></li>
+            <li class="nav-item"><a class="nav-link" href="{{ path('app_contact') }}">Contact</a></li>
+            {% if is_granted('ROLE_ADMIN') %}
+              <li class="nav-item"><a class="nav-link" href="{{ path('admin_users') }}">Admin · Users</a></li>
+              <li class="nav-item"><a class="nav-link" href="{{ path('admin_contacts') }}">Admin · Contacts</a></li>
+              {% include '_partials/admin_nav_items.html.twig' %}
+            {% endif %}
+          </ul>
+
+          <ul class="navbar-nav ms-auto">
+            {% if app.user %}
+              <li class="nav-item d-flex align-items-center me-2 text-muted small">
+                {{ app.user.name ?? app.user.email }}
+              </li>
+              <li class="nav-item"><a class="nav-link" href="{{ path('app_account') }}">Mon compte</a></li>
+              <li class="nav-item"><a class="nav-link" href="{{ path('app_logout') }}">Déconnexion</a></li>
+            {% else %}
+              <li class="nav-item"><a class="nav-link" href="{{ path('app_login') }}">Connexion</a></li>
+              <li class="nav-item"><a class="nav-link" href="{{ path('app_register') }}">Inscription</a></li>
+            {% endif %}
+          </ul>
+        </div>
+      </div>
+    </nav>
+
+    <main class="flex-grow-1 py-4">
+      <div class="container">
+        <div class="flash-container">
+          {% for type, messages in app.flashes %}
+            {% for m in messages %}
+              <div class="alert alert-{{ type }} mb-2">{{ m }}</div>
+            {% endfor %}
+          {% endfor %}
+        </div>
+
+        {% block body %}{% endblock %}
+      </div>
+    </main>
+
+    {# ===== FOOTER ===== #}
+    {% block footer %}
+    <footer class="footer bg-light border-top">
+      <div class="container py-4">
+        <div class="row gy-3 align-items-center">
+          <div class="col-md-6">
+            <div class="small text-muted">
+              © {{ "now"|date("Y") }} BluePicking — Tous droits réservés.
+            </div>
+          </div>
+          <div class="col-md-6">
+            <ul class="list-inline mb-0 text-md-end small footer-links">
+              <li class="list-inline-item"><a href="{{ path('home') }}">Accueil</a></li>
+              <li class="list-inline-item"><a href="{{ path('app_contact') }}">Contact</a></li>
+              {% if app.user %}
+                <li class="list-inline-item"><a href="{{ path('app_account') }}">Mon compte</a></li>
+                <li class="list-inline-item"><a href="{{ path('app_logout') }}">Déconnexion</a></li>
+              {% else %}
+                <li class="list-inline-item"><a href="{{ path('app_login') }}">Connexion</a></li>
+                <li class="list-inline-item"><a href="{{ path('app_register') }}">Inscription</a></li>
+              {% endif %}
+            </ul>
+          </div>
+        </div>
+      </div>
+    </footer>
+    {% endblock %}
+
+    {# Bootstrap JS local (bundle + Popper) #}
+    <script defer src="{{ asset('assets/bootstrap/bootstrap.bundle.min.js') }}"></script>
+    {% block javascripts %}{% endblock %}
+  </body>
+</html>
+

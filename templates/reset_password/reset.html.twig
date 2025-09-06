@@ -1,0 +1,12 @@
+{% extends 'base.html.twig' %}
+{% block title %}Nouveau mot de passe{% endblock %}
+{% block body %}
+<h1>Définis un nouveau mot de passe</h1>
+
+{{ form_start(resetForm) }}
+  {{ form_row(resetForm.plainPassword.first) }}
+  {{ form_row(resetForm.plainPassword.second) }}
+  <button class="btn btn-primary">Mettre à jour</button>
+{{ form_end(resetForm) }}
+{% endblock %}
+

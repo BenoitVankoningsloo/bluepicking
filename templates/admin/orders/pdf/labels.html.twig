@@ -1,0 +1,41 @@
+{% extends 'pdf/base.html.twig' %}
+{% block styles %}
+<style>
+  @page { size: A5 portrait; margin: 6mm; }
+  .page { page-break-after: always; }
+  h1 { font-size: 18pt; margin: 0 0 6mm 0; }
+  .line { font-size: 12pt; margin: 2mm 0; }
+  .bar { border-top:1px solid #000; margin:6mm 0; }
+</style>
+{% endblock %}
+{% block content %}
+{% set name  = meta.ship_name ?? o.customer_name %}
+{% set addr1 = meta.ship_address1 ?? '' %}
+{% set addr2 = meta.ship_address2 ?? '' %}
+{% set city  = (meta.ship_postcode ~ ' ' ~ (meta.ship_city ?? ''))|trim %}
+{% set ctry  = meta.ship_country ?? '' %}
+{% set count = meta.parcels_count ?? (parcels ? parcels|length : 1) %}
+
+{% if parcels is empty %}
+  {% set parcels = [] %}
+  {% for i in 1..count %}
+    {% set parcels = parcels|merge([{'seq': i, 'tracking_number': o.tracking_number ?? ''}]) %}
+  {% endfor %}
+{% endif %}
+
+{% for p in parcels %}
+<div class="page">
+  <h1>bluepicking</h1>
+  <div class="line"><strong>{{ name }}</strong></div>
+  {% if addr1 %}<div class="line">{{ addr1 }}</div>{% endif %}
+  {% if addr2 %}<div class="line">{{ addr2 }}</div>{% endif %}
+  {% if city or ctry %}<div class="line">{{ city }} {{ ctry }}</div>{% endif %}
+  <div class="bar"></div>
+  <div class="line">Commande : {{ o.external_order_id ?? o.id }}</div>
+  <div class="line">Colis {{ p.seq }}/{{ count }}</div>
+  <div class="line">Transport : {{ carrier ~ (service ? ' · ' ~ service : '') }}</div>
+  <div class="line">Tracking : {{ p.tracking_number ?? o.tracking_number ?? '—' }}</div>
+</div>
+{% endfor %}
+{% endblock %}
+

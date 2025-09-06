@@ -1,0 +1,12 @@
+<p>Bonjour {{ contact_name ?: contact_email }},</p>
+
+<p>Nous avons bien reçu votre message.</p>
+
+<p><strong>Sujet :</strong> {{ contact_subject ?: '(non fourni)' }}<br>
+<strong>Date :</strong> {{ submitted_at ?: '(n/a)' }}</p>
+
+<p><strong>Copie de votre message :</strong></p>
+<blockquote style="white-space: pre-wrap">{{ contact_body ?: '(vide)' }}</blockquote>
+
+<p>Nous revenons vers vous au plus vite.<br>— Équipe Bluepicking</p>
+

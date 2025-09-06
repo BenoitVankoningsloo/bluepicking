@@ -1,0 +1,10 @@
+{% if is_granted('ROLE_ADMIN') %}
+  {% set route = app.request.attributes.get('_route') %}
+  <li class="nav-item">
+    <a class="nav-link {{ route starts with 'admin_orders_' ? 'active' : '' }}"
+       href="{{ path('admin_orders_list') }}">
+      Commandes
+    </a>
+  </li>
+{% endif %}
+

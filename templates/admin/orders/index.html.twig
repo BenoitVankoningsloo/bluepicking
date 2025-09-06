@@ -1,0 +1,172 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Commandes{% endblock %}
+
+{% block body %}
+<style>
+/* ===== Badges de statut (lisibles sur fond clair & sombre) ===== */
+.status-badge{
+  display:inline-block; font-size:.75rem; font-weight:600; line-height:1;
+  padding:.35em .6em; border-radius:.35rem; border:1px solid transparent;
+  white-space:nowrap; user-select:none;
+}
+.status-unknown{ background:#e2e3e5; color:#41464b; border-color:#d3d6d8; }   /* — */
+.status-draft{   background:#eef1f4; color:#495057; border-color:#d0d7de; }   /* Devis */
+.status-sent{    background:#e7f1ff; color:#084298; border-color:#b6d4fe; }   /* Devis envoyé */
+.status-sale{    background:#cfe2ff; color:#084298; border-color:#9ec5fe; }   /* Confirmée */
+.status-done{    background:#d1e7dd; color:#0f5132; border-color:#badbcc; }   /* Terminée */
+.status-cancel{  background:#f8d7da; color:#842029; border-color:#f5c2c7; }   /* Annulée */
+
+.status-processing{ background:#fff3cd; color:#664d03; border-color:#ffecb5; } /* En préparation */
+.status-ready{      background:#cfe2ff; color:#084298; border-color:#9ec5fe; } /* Prête */
+.status-shipped{    background:#d1e7dd; color:#0f5132; border-color:#baddcc; } /* Expédiée */
+.status-delivered{  background:#d1e7dd; color:#0f5132; border-color:#badbcc; } /* Livrée */
+.status-error,
+.status-failed{     background:#f8d7da; color:#842029; border-color:#f5c2c7; } /* Erreur */
+.status-returned{   background:#e2e3e5; color:#41464b; border-color:#d3d6d8; } /* Retournée */
+
+/* Divers */
+.table th a { text-decoration: none; }
+.filters .form-control, .filters .form-select { max-width: 260px; display: inline-block; }
+</style>
+
+{# ==== Macro de tri ==== #}
+{% macro sort_link(label, col, sort, dir) %}
+  {% set newDir = (sort == col and dir == 'asc') ? 'desc' : 'asc' %}
+  {% set qs = app.request.query.all | merge({'sort': col, 'dir': newDir, 'page': 1}) %}
+  <a href="{{ path(app.request.attributes.get('_route'), qs) }}">{{ label }}
+    {% if sort == col %} {{ dir == 'asc' ? '▲' : '▼' }} {% endif %}
+  </a>
+{% endmacro %}
+{% import _self as self %}
+
+{# ==== Labels humainement lisibles ==== #}
+{% set statusLabels = {
+  'draft':'Devis', 'sent':'Devis envoyé', 'sale':'Confirmée', 'done':'Terminée', 'cancel':'Annulée',
+  'processing':'En préparation', 'ready':'Prête', 'shipped':'Expédiée', 'delivered':'Livrée',
+  'error':'Erreur', 'failed':'Échec', 'returned':'Retournée', 'unknown':'—'
+} %}
+
+<div class="container py-4">
+  <h1 class="mb-3">Commandes</h1>
+
+  {# ==== Filtres ==== #}
+  <form method="get" class="filters mb-3">
+    <input type="text" name="q" class="form-control" placeholder="Rechercher (ID ext., client, email, tracking)" value="{{ q }}">
+    <input type="text" name="status" class="form-control ms-2" placeholder="Statut (draft, sale, done, ...)" value="{{ status }}">
+    <input type="text" name="source" class="form-control ms-2" placeholder="Source (manual, odoo, web)" value="{{ source }}">
+    <input type="date" name="placed_from" class="form-control ms-2" value="{{ placed_from }}">
+    <input type="date" name="placed_to" class="form-control ms-2" value="{{ placed_to }}">
+    <input type="number" name="per_page" class="form-control ms-2" min="5" max="200" value="{{ per_page }}" title="Par page">
+    <button class="btn btn-primary ms-2">Filtrer</button>
+    {% if q or status or source or placed_from or placed_to %}
+      <a class="btn btn-link ms-2" href="{{ path(app.request.attributes.get('_route')) }}">Réinitialiser</a>
+    {% endif %}
+  </form>
+
+  {# ==== Compteur + Import Odoo + Exports ==== #}
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <div><strong>{{ total }}</strong> résultat{{ total>1?'s':'' }}</div>
+
+    <div class="d-flex align-items-center flex-wrap" style="gap:.5rem;">
+      {# Import Odoo (ref vide => batch 30 jours) #}
+      <form method="post" action="{{ path('admin_odoo_import_by_ref') }}" class="d-flex align-items-center">
+        <input type="hidden" name="_token" value="{{ csrf_token('odoo_import') }}">
+        <input type="text" name="ref" class="form-control form-control-sm d-inline-block" style="width:220px"
+               placeholder="Réf Odoo (ex. S00042) — vide = batch">
+        <button class="btn btn-outline-primary btn-sm ms-1">Importer depuis Odoo</button>
+      </form>
+
+      <a class="btn btn-outline-secondary btn-sm"
+         href="{{ path('admin_orders_export', app.request.query.all) }}">
+         Exporter CSV
+      </a>
+      <a class="btn btn-outline-secondary btn-sm"
+         href="{{ path('admin_orders_export', app.request.query.all | merge({'include_payload': 1})) }}">
+         Exporter CSV + payload
+      </a>
+    </div>
+  </div>
+
+  <div class="table-responsive">
+    <table class="table table-striped align-middle">
+      <thead>
+        <tr>
+          <th>{{ self.sort_link('ID externe', 'external_order_id', sort, dir) }}</th>
+          <th>{{ self.sort_link('Statut', 'status', sort, dir) }}</th>
+          <th>{{ self.sort_link('Client', 'customer_name', sort, dir) }}</th>
+          <th class="text-end">{{ self.sort_link('Montant', 'total_amount', sort, dir) }}</th>
+          <th class="text-end">{{ self.sort_link('Articles', 'item_count', sort, dir) }}</th>
+          <th>{{ self.sort_link('Source', 'source', sort, dir) }}</th>
+          <th>Transport</th>
+          <th>Tracking</th>
+          <th>{{ self.sort_link('Passée le', 'placed_at', sort, dir) }}</th>
+          <th>{{ self.sort_link('Maj', 'updated_at', sort, dir) }}</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for o in items %}
+        {% set raw = (o.status ?? '') %}
+        {% set key = raw ? raw|lower : 'unknown' %}
+        {% set known = ['draft','sent','sale','done','cancel','processing','ready','shipped','delivered','error','failed','returned'] %}
+        {% set key = key in known ? key : 'unknown' %}
+
+        <tr>
+          <td>
+            <a href="{{ path('admin_orders_show', {'id': o.id}) }}"><code>{{ o.external_order_id }}</code></a>
+          </td>
+
+          {# ==== Statut (badge coloré) ==== #}
+          <td>
+            <span class="status-badge status-{{ key }}" title="{{ raw ?: '—' }}">
+              {{ statusLabels[key] ?? (raw ?: '—') }}
+            </span>
+          </td>
+
+          <td>
+            {{ o.customer_name }}
+            {% if o.customer_email %}<div class="text-muted small">{{ o.customer_email }}</div>{% endif %}
+          </td>
+          <td class="text-end">
+            {% if o.total_amount is not null %}
+              {{ o.total_amount|number_format(2, ',', ' ') }} {{ o.currency ?: '' }}
+            {% else %}
+              —
+            {% endif %}
+          </td>
+          <td class="text-end">{{ o.item_count }}</td>
+          <td>{{ o.source }}</td>
+          <td>
+            {% set parts = [] %}
+            {% if o.shipping_carrier %}{% set parts = parts|merge([o.shipping_carrier]) %}{% endif %}
+            {% if o.shipping_service %}{% set parts = parts|merge([o.shipping_service]) %}{% endif %}
+            {{ parts|join(' · ') }}
+          </td>
+          <td>{{ o.tracking_number }}</td>
+          <td>{{ o.placed_at ? o.placed_at|date('Y-m-d H:i') : '' }}</td>
+          <td>{{ o.updated_at ? o.updated_at|date('Y-m-d H:i') : '' }}</td>
+          <td>
+            <div class="btn-group btn-group-sm" role="group">
+              <a class="btn btn-secondary" title="PDF Picking A4"
+                 href="{{ path('admin_orders_picking_pdf', {'id': o.id}) }}">PDF Picking</a>
+              <a class="btn btn-secondary" title="PDF Bon de livraison A4"
+                 href="{{ path('admin_orders_delivery_pdf', {'id': o.id}) }}">PDF BL</a>
+              <a class="btn btn-secondary" title="PDF Étiquettes A5"
+                 href="{{ path('admin_orders_labels_pdf', {'id': o.id}) }}">PDF Labels</a>
+              <a class="btn btn-outline-primary"  title="Traitement"
+                 href="{{ path('admin_orders_process', {'id': o.id}) }}">Traiter</a>
+            </div>
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="11" class="text-center text-muted">Aucune commande.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% include 'admin/_pagination.html.twig' %}
+</div>
+{% endblock %}
+

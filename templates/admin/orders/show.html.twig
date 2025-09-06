@@ -1,0 +1,116 @@
+{% extends 'base.html.twig' %}
+{% block title %}Commande {{ o.external_order_id ?? o.id }}{% endblock %}
+
+{% block body %}
+<div class="container py-4">
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <a class="btn btn-link" href="{{ path('admin_orders_list') }}">← Retour à la liste</a>
+    <div class="d-flex align-items-center gap-2">
+      <a class="btn btn-primary btn-sm" href="{{ path('admin_orders_process', {'id': o.id}) }}">Traiter la commande</a>
+    </div>
+  </div>
+
+  <h1 class="h4 mb-3">Détails de la commande</h1>
+
+  <div class="row g-3">
+    <div class="col-md-6">
+      <div class="card">
+        <div class="card-body">
+          <dl class="row mb-0">
+            <dt class="col-5">Référence externe</dt>
+            <dd class="col-7"><code>{{ o.external_order_id ?? o.id }}</code></dd>
+
+            <dt class="col-5">Statut</dt>
+            <dd class="col-7">{{ o.status ?: '—' }}</dd>
+
+            <dt class="col-5">Client</dt>
+            <dd class="col-7">{{ o.customer_name ?: '—' }}</dd>
+
+            <dt class="col-5">Email</dt>
+            <dd class="col-7">{{ o.customer_email ?: '—' }}</dd>
+
+            <dt class="col-5">Montant</dt>
+            <dd class="col-7">
+              {% if o.total_amount is not null %}
+                {{ o.total_amount|number_format(2, ',', ' ') }} {{ o.currency ?: '' }}
+              {% else %}—{% endif %}
+            </dd>
+
+            <dt class="col-5">Articles</dt>
+            <dd class="col-7">{{ o.item_count }}</dd>
+
+            <dt class="col-5">Source</dt>
+            <dd class="col-7">{{ o.source ?: '—' }}</dd>
+
+            <dt class="col-5">Transport</dt>
+            <dd class="col-7">
+              {% set parts = [] %}
+              {% if o.shipping_carrier %}{% set parts = parts|merge([o.shipping_carrier]) %}{% endif %}
+              {% if o.shipping_service %}{% set parts = parts|merge([o.shipping_service]) %}{% endif %}
+              {{ parts|join(' · ') ?: '—' }}
+            </dd>
+
+            <dt class="col-5">Tracking</dt>
+            <dd class="col-7">{{ o.tracking_number ?: '—' }}</dd>
+
+            <dt class="col-5">Passée le</dt>
+            <dd class="col-7">{{ o.placed_at ? o.placed_at|date('Y-m-d H:i') : '—' }}</dd>
+
+            <dt class="col-5">Mise à jour</dt>
+            <dd class="col-7">{{ o.updated_at ? o.updated_at|date('Y-m-d H:i') : '—' }}</dd>
+          </dl>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-6">
+      <div class="card h-100">
+        <div class="card-body">
+          <h2 class="h6">Adresse d’expédition</h2>
+          {% set ship_name     = meta.ship_name     ?? partner.name     ?? o.customer_name %}
+          {% set ship_address1 = meta.ship_address1 ?? partner.street   ?? '' %}
+          {% set ship_address2 = meta.ship_address2 ?? partner.street2  ?? '' %}
+          {% set ship_postcode = meta.ship_postcode ?? partner.zip      ?? '' %}
+          {% set ship_city     = meta.ship_city     ?? partner.city     ?? '' %}
+          {% set ship_country  = meta.ship_country  ?? partner.country_code ?? '' %}
+          {% set ship_phone    = meta.ship_phone    ?? partner.phone    ?? '' %}
+
+          <div>{{ ship_name ?: '—' }}</div>
+          <div>{{ ship_address1 ?: '—' }}</div>
+          {% if ship_address2 %}<div>{{ ship_address2 }}</div>{% endif %}
+          <div>{{ ship_postcode }} {{ ship_city }}</div>
+          <div>{{ ship_country }}</div>
+          {% if ship_phone %}<div class="text-muted mt-2 small">Tél. {{ ship_phone }}</div>{% endif %}
+          <div class="text-muted mt-2 small">Préparateur : {{ meta.prepared_by ?: '—' }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <hr class="my-4">
+
+  <div class="table-responsive">
+    <table class="table table-sm align-middle">
+      <thead>
+        <tr>
+          <th>SKU</th>
+          <th>Nom</th>
+          <th class="text-end">Qté</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for l in lines %}
+          <tr>
+            <td><code>{{ l.sku }}</code></td>
+            <td>{{ l.name }}</td>
+            <td class="text-end">{{ l.qty }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="3" class="text-center text-muted">Aucune ligne.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+

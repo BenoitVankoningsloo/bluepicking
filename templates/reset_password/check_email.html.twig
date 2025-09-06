@@ -1,0 +1,8 @@
+{% extends 'base.html.twig' %}
+{% block title %}Email envoyé{% endblock %}
+{% block body %}
+<h1>Regarde ta boîte mail</h1>
+<p>Si un compte existe pour cette adresse, un lien de réinitialisation vient d’être envoyé.</p>
+<p>Rien reçu ? Vérifie le spam ou <a href="{{ path('app_forgot_password_request') }}">réessaie</a>.</p>
+{% endblock %}
+

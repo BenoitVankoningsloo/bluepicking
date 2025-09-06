@@ -1,0 +1,19 @@
+{% set prev = page > 1 ? page - 1 : 1 %}
+{% set next = page < totalPages ? page + 1 : totalPages %}
+
+<nav aria-label="Pagination">
+  <ul class="pagination">
+    <li class="page-item {{ page == 1 ? 'disabled' }}">
+      {% set qs_prev = app.request.query.all | merge({'page': prev}) %}
+      <a class="page-link" href="{{ path(app.request.attributes.get('_route'), qs_prev) }}">Précédent</a>
+    </li>
+
+    <li class="page-item disabled"><span class="page-link">Page {{ page }} / {{ totalPages }}</span></li>
+
+    <li class="page-item {{ page == totalPages ? 'disabled' }}">
+      {% set qs_next = app.request.query.all | merge({'page': next}) %}
+      <a class="page-link" href="{{ path(app.request.attributes.get('_route'), qs_next) }}">Suivant</a>
+    </li>
+  </ul>
+</nav>
+

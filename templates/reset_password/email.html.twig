@@ -1,0 +1,5 @@
+<p>Bonjour {{ user_email }},</p>
+<p>Pour réinitialiser votre mot de passe, cliquez :</p>
+<p><a href="{{ url('app_reset_password', { token: resetToken.token }) }}">Réinitialiser mon mot de passe</a></p>
+<p>Si vous n’êtes pas à l’origine de cette demande, ignorez cet email.</p>
+
