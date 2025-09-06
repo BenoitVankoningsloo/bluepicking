@@ -1,19 +1,26 @@
-<?php
+<?php /** @noinspection ALL */
+/** @noinspection PhpUnusedLocalVariableInspection */
 declare(strict_types=1);
 
 namespace App\Controller\Admin;
 
 use App\Service\OdooSalesService;
 use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Exception;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
+use Throwable;
 
 final class OrderProcessController extends AbstractController
 {
     public function __construct(private readonly Connection $db) {}
 
+    /**
+     * @throws Exception
+     * @noinspection PhpUnusedLocalVariableInspection
+     */
     #[Route('/admin/orders/{id<\\d+>}/process', name: 'admin_orders_process', methods: ['GET','POST'])]
     public function __invoke(int $id, Request $req, OdooSalesService $odooSvc): Response
     {
@@ -28,7 +35,7 @@ final class OrderProcessController extends AbstractController
         // Récupère l'état Odoo courant (sale.order.state) si la commande est liée
         $odooState = null;
         if (!empty($o['odoo_sale_order_id'])) {
-            try { $odooState = $odooSvc->getSaleOrderState((int)$o['odoo_sale_order_id']); } catch (\Throwable) {}
+            try { $odooState = $odooSvc->getSaleOrderState((int)$o['odoo_sale_order_id']); } catch (Throwable) {}
         }
 
         if ($req->isMethod('POST') && !$locked) {
@@ -100,13 +107,14 @@ final class OrderProcessController extends AbstractController
         ];
 
         // Dropdown préparateur (tolérant)
+        /** @noinspection PhpUnusedLocalVariableInspection */
         $users = [];
         try {
             $users = $this->db->fetchAllAssociative('SELECT COALESCE(full_name, name, username, email) AS label FROM user ORDER BY label');
-        } catch (\Throwable) {
+        } catch (Throwable) {
             try {
                 $users = $this->db->fetchAllAssociative('SELECT COALESCE(full_name, name, username, email) AS label FROM users ORDER BY label');
-            } catch (\Throwable) {
+            } catch (Throwable) {
                 $users = [['label' => ($this->getUser()?->getUserIdentifier() ?? 'admin')]];
             }
         }

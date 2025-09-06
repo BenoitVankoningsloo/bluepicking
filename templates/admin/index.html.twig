@@ -24,13 +24,17 @@
   <h1 class="mb-3">Produits</h1>
 
   <form method="get" class="filters mb-3">
-    <input type="text" name="q" class="form-control" placeholder="Rechercher (SKU, nom, catégorie)" value="{{ q }}">
-    <select name="active" class="form-select ms-2">
-      <option value="" {{ active is null or active == '' ? 'selected' }}>Actifs + Inactifs</option>
-      <option value="1" {{ active == '1' ? 'selected' }}>Actifs</option>
-      <option value="0" {{ active == '0' ? 'selected' }}>Inactifs</option>
-    </select>
-    <input type="number" name="per_page" class="form-control ms-2" min="5" max="200" value="{{ per_page }}" title="Par page">
+      <label>
+          <input type="text" name="q" class="form-control" placeholder="Rechercher (SKU, nom, catégorie)" value="{{ q }}">
+      </label>
+      <label>
+          <select name="active" class="form-select ms-2">
+          <option value="" {{ active is null or active == '' ? 'selected' }}>Actifs + Inactifs</option>
+          <option value="1" {{ active == '1' ? 'selected' }}>Actifs</option>
+          <option value="0" {{ active == '0' ? 'selected' }}>Inactifs</option>
+        </select>
+      </label>
+      <input type="number" name="per_page" class="form-control ms-2" min="5" max="200" value="{{ per_page }}" title="Par page">
     <button class="btn btn-primary ms-2">Filtrer</button>
     {% if q or (active is not null and active != '') %}
       <a class="btn btn-link ms-2" href="{{ path(app.request.attributes.get('_route')) }}">Réinitialiser</a>

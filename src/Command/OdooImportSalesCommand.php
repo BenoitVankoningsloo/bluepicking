@@ -10,6 +10,7 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
+use Throwable;
 
 #[AsCommand(name: 'app:odoo:import-sales', description: 'Importe des sale.orders Odoo en base locale')]
 final class OdooImportSalesCommand extends Command
@@ -27,8 +28,8 @@ final class OdooImportSalesCommand extends Command
     {
         $this
             ->addOption('states', null, InputOption::VALUE_REQUIRED, 'États Odoo (csv)', 'draft,sent,sale,done')
-            ->addOption('since', null, InputOption::VALUE_OPTIONAL, 'Date min (YYYY-MM-DD)', null)
-            ->addOption('until', null, InputOption::VALUE_OPTIONAL, 'Date max (YYYY-MM-DD)', null)
+            ->addOption('since', null, InputOption::VALUE_OPTIONAL, 'Date min (YYYY-MM-DD)')
+            ->addOption('until', null, InputOption::VALUE_OPTIONAL, 'Date max (YYYY-MM-DD)')
             ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Nombre max à importer', '500')
             ->addOption('offset', null, InputOption::VALUE_REQUIRED, 'Décalage initial', '0');
     }
@@ -50,7 +51,7 @@ final class OdooImportSalesCommand extends Command
             $res = $this->sync->syncBatch($states, $since, $until, $limit, $offset);
             $io->success(sprintf('Importés: %d (dernier: %s)', $res['imported'], $res['last_ref'] ?? '—'));
             return Command::SUCCESS;
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             $io->error($e->getMessage());
             return Command::FAILURE;
         }

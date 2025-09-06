@@ -1,4 +1,5 @@
-<?php
+<?php /** @noinspection ALL */
+/** @noinspection PhpUnusedLocalVariableInspection */
 
 declare(strict_types=1);
 
@@ -14,6 +15,7 @@ use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\RedirectResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\Mailer\Exception\TransportExceptionInterface;
 use Symfony\Component\Mailer\MailerInterface;
 use Symfony\Component\Mime\Address;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
@@ -28,12 +30,15 @@ use SymfonyCasts\Bundle\ResetPassword\ResetPasswordHelperInterface;
     use ResetPasswordControllerTrait;
 
     public function __construct(
-        private ResetPasswordHelperInterface $resetPasswordHelper,
-        private EntityManagerInterface $entityManager,
-        private UserRepository $userRepository,
+        private readonly ResetPasswordHelperInterface $resetPasswordHelper,
+        private readonly EntityManagerInterface       $entityManager,
+        private readonly UserRepository               $userRepository,
     ) {}
 
- #[Route('', name: 'app_forgot_password_request')]
+     /**
+      * @throws TransportExceptionInterface
+      */
+     #[Route('', name: 'app_forgot_password_request')]
     public function request(Request $request, MailerInterface $mailer): Response
     {
         $form = $this->createForm(ResetPasswordRequestFormType::class);
@@ -108,7 +113,11 @@ use SymfonyCasts\Bundle\ResetPassword\ResetPasswordHelperInterface;
         ]);
     }
 
-    private function processSendingPasswordResetEmail(string $email, MailerInterface $mailer): RedirectResponse
+     /**
+      * @throws TransportExceptionInterface
+      * @noinspection PhpUnusedLocalVariableInspection
+      */
+     private function processSendingPasswordResetEmail(string $email, MailerInterface $mailer): RedirectResponse
     {
         $user = $this->userRepository->findOneBy(['email' => $email]);
 
@@ -119,7 +128,7 @@ use SymfonyCasts\Bundle\ResetPassword\ResetPasswordHelperInterface;
 
         try {
             $resetToken = $this->resetPasswordHelper->generateResetToken($user);
-        } catch (ResetPasswordExceptionInterface $e) {
+        } /** @noinspection PhpUnusedLocalVariableInspection */ catch (ResetPasswordExceptionInterface $e) {
             return $this->redirectToRoute('app_check_email');
         }
 

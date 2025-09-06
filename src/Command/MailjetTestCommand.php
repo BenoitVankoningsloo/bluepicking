@@ -12,6 +12,7 @@ use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\Mailer\MailerInterface;
 use Symfony\Component\Mime\Address;
 use Symfony\Component\Mime\Email;
+use Throwable;
 
 #[AsCommand(name: 'app:mail:test', description: 'Envoie un email de test via Mailjet')]
 final class MailjetTestCommand extends Command
@@ -47,7 +48,7 @@ final class MailjetTestCommand extends Command
             $this->mailer->send($email);
             $io->success(sprintf('Email envoyé à %s', $to));
             return Command::SUCCESS;
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             $io->error($e->getMessage());
             return Command::FAILURE;
         }

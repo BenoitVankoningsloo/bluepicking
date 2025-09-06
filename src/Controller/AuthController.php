@@ -1,14 +1,18 @@
-<?php declare(strict_types=1);
+<?php /** @noinspection ALL */
+declare(strict_types=1);
 
 namespace App\Controller;
 
+use LogicException;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Security\Http\Authentication\AuthenticationUtils;
+use Throwable;
 
 final class AuthController extends AbstractController
 {
+    /** @noinspection PhpConditionAlreadyCheckedInspection */
     #[Route('/login', name: 'app_login', methods: ['GET','POST'])]
     public function login(AuthenticationUtils $authenticationUtils): Response
     {
@@ -17,9 +21,9 @@ final class AuthController extends AbstractController
 
         $siteKey = '';
         try {
-            /** @var string $siteKey */
             $siteKey = (string) $this->getParameter('app.recaptcha_site_key');
-        } catch (\Throwable) {
+        } catch (Throwable) {
+            /** @noinspection PhpConditionAlreadyCheckedInspection */
             $siteKey = '';
         }
 
@@ -33,7 +37,7 @@ final class AuthController extends AbstractController
     #[Route('/logout', name: 'app_logout', methods: ['GET'])]
     public function logout(): never
     {
-        throw new \LogicException('Intercepted by the firewall.');
+        throw new LogicException('Intercepted by the firewall.');
     }
 }
 

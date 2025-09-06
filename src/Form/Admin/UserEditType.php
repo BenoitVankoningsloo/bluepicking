@@ -28,7 +28,7 @@ final class UserEditType extends AbstractType
                 'label' => 'Adresse email',
                 'constraints' => [
                     new Assert\NotBlank(message: 'Email requis'),
-                    new Assert\Email(mode: Assert\Email::VALIDATION_MODE_HTML5, message: 'Email invalide'),
+                    new Assert\Email(message: 'Email invalide', mode: Assert\Email::VALIDATION_MODE_HTML5),
                 ],
             ])
             ->add('roles', ChoiceType::class, [

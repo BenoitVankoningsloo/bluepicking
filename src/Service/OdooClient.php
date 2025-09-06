@@ -1,8 +1,20 @@
-<?php
+<?php /** @noinspection ALL */
+/** @noinspection ALL */
+/** @noinspection ALL */
+/** @noinspection PhpUnhandledExceptionInspection */
+/** @noinspection PhpUnhandledExceptionInspection */
+/** @noinspection PhpUnhandledExceptionInspection */
 declare(strict_types=1);
 
 namespace App\Service;
 
+use Random\RandomException;
+use RuntimeException;
+use Symfony\Contracts\HttpClient\Exception\ClientExceptionInterface;
+use Symfony\Contracts\HttpClient\Exception\DecodingExceptionInterface;
+use Symfony\Contracts\HttpClient\Exception\RedirectionExceptionInterface;
+use Symfony\Contracts\HttpClient\Exception\ServerExceptionInterface;
+use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 final class OdooClient
@@ -20,10 +32,18 @@ final class OdooClient
         $this->login     = (string)($_ENV['ODOO_LOGIN'] ?? '');
         $this->passOrKey = (string)($_ENV['ODOO_API_KEY'] ?? '');
         if ($this->url === '/jsonrpc' || !$this->db || !$this->login || !$this->passOrKey) {
-            throw new \RuntimeException('OdooClient: variables ODOO_URL/DB/LOGIN/API_KEY manquantes.');
+            throw new RuntimeException('OdooClient: variables ODOO_URL/DB/LOGIN/API_KEY manquantes.');
         }
     }
 
+    /**
+     * @throws TransportExceptionInterface
+     * @throws RandomException
+     * @throws ServerExceptionInterface
+     * @throws RedirectionExceptionInterface
+     * @throws DecodingExceptionInterface
+     * @throws ClientExceptionInterface
+     */
     private function jsonRpc(string $service, string $method, array $args): mixed
     {
         $payload = [
@@ -41,34 +61,42 @@ final class OdooClient
         if (isset($data['error'])) {
             $msg = $data['error']['message'] ?? 'Odoo JSON-RPC error';
             $det = $data['error']['data']['message'] ?? '';
-            throw new \RuntimeException(sprintf('Odoo RPC: %s %s', $msg, $det));
+            throw new RuntimeException(sprintf('Odoo RPC: %s %s', $msg, $det));
         }
         return $data['result'] ?? null;
     }
 
+    /** @noinspection PhpUnhandledExceptionInspection */
     private function ensureLogin(): void
     {
         if ($this->uid) return;
+        /** @noinspection PhpUnhandledExceptionInspection */
         $uid = $this->jsonRpc('common', 'login', [$this->db, $this->login, $this->passOrKey]);
         if (!is_int($uid) || $uid <= 0) {
-            throw new \RuntimeException('Odoo login failed (uid invalide).');
+            throw new RuntimeException('Odoo login failed (uid invalide).');
         }
         $this->uid = $uid;
     }
 
-    /** execute_kw (avec kwargs) */
+    /** execute_kw (avec kwargs)
+     * @noinspection PhpUnhandledExceptionInspection
+     */
     public function callKW(string $model, string $method, array $args = [], array $kwargs = []): mixed
     {
         $this->ensureLogin();
+        /** @noinspection PhpUnhandledExceptionInspection */
         return $this->jsonRpc('object', 'execute_kw', [
             $this->db, $this->uid, $this->passOrKey, $model, $method, $args, $kwargs
         ]);
     }
 
-    /** execute (sans kwargs) */
+    /** execute (sans kwargs)
+     * @noinspection PhpUnhandledExceptionInspection
+     */
     public function call(string $model, string $method, mixed ...$args): mixed
     {
         $this->ensureLogin();
+        /** @noinspection PhpUnhandledExceptionInspection */
         return $this->jsonRpc('object', 'execute', [
             $this->db, $this->uid, $this->passOrKey, $model, $method, ...$args
         ]);

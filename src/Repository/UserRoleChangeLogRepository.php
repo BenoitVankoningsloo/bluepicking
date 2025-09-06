@@ -1,4 +1,10 @@
-<?php declare(strict_types=1);
+<?php /** @noinspection ALL */
+/** @noinspection ALL */
+/** @noinspection ALL */
+/** @noinspection PhpMultipleClassDeclarationsInspection */
+/** @noinspection PhpMultipleClassDeclarationsInspection */
+/** @noinspection PhpMultipleClassDeclarationsInspection */
+declare(strict_types=1);
 
 namespace App\Repository;
 

@@ -21,7 +21,7 @@
         class="admin-toolbar-center d-flex align-items-center justify-content-between gap-2 flex-wrap mb-3">
 
     <div class="flex-grow-1 d-flex justify-content-center">
-      <input
+        <label for="q"></label><input
         type="search"
         id="q"
         name="q"
@@ -33,13 +33,15 @@
     </div>
 
     <div class="d-flex align-items-center gap-2">
-      <select name="role" class="form-select form-select-sm" style="min-width: 160px">
-        <option value="any"  {{ role == 'any'  ? 'selected' }} >Tous les rôles</option>
-        <option value="ROLE_USER"  {{ role == 'ROLE_USER'  ? 'selected' }} >ROLE_USER</option>
-        <option value="ROLE_ADMIN" {{ role == 'ROLE_ADMIN' ? 'selected' }} >ROLE_ADMIN</option>
-      </select>
+        <label>
+            <select name="role" class="form-select form-select-sm" style="min-width: 160px">
+              <option value="any"  {{ role == 'any'  ? 'selected' }} >Tous les rôles</option>
+              <option value="ROLE_USER"  {{ role == 'ROLE_USER'  ? 'selected' }} >ROLE_USER</option>
+              <option value="ROLE_ADMIN" {{ role == 'ROLE_ADMIN' ? 'selected' }} >ROLE_ADMIN</option>
+            </select>
+        </label>
 
-      <a class="btn btn-sm btn-outline-secondary" href="{{ path('admin_users') }}">Réinitialiser</a>
+        <a class="btn btn-sm btn-outline-secondary" href="{{ path('admin_users') }}">Réinitialiser</a>
     </div>
   </form>
 

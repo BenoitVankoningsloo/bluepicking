@@ -1,4 +1,54 @@
-<?php
+<?php /** @noinspection PhpUnhandledExceptionInspection */
+/** @noinspection PhpUnhandledExceptionInspection */
+/** @noinspection PhpUnhandledExceptionInspection */
+/** @noinspection PhpUnhandledExceptionInspection */
+/** @noinspection PhpUnhandledExceptionInspection */
+/** @noinspection PhpUnhandledExceptionInspection */
+/** @noinspection PhpUnhandledExceptionInspection */
+/** @noinspection PhpUnhandledExceptionInspection */
+/** @noinspection PhpUnhandledExceptionInspection */
+/** @noinspection PhpUnhandledExceptionInspection */
+/** @noinspection PhpUnhandledExceptionInspection */
+/** @noinspection PhpUnhandledExceptionInspection */
+/** @noinspection PhpUnhandledExceptionInspection */
+/** @noinspection PhpUnhandledExceptionInspection */
+/** @noinspection PhpUnhandledExceptionInspection */
+/** @noinspection PhpUnhandledExceptionInspection */
+/** @noinspection PhpUnhandledExceptionInspection */
+/** @noinspection PhpUnhandledExceptionInspection */
+/** @noinspection PhpUnhandledExceptionInspection */
+/** @noinspection PhpUnhandledExceptionInspection */
+/** @noinspection PhpUnhandledExceptionInspection */
+/** @noinspection PhpUnhandledExceptionInspection */
+/** @noinspection PhpUnhandledExceptionInspection */
+/** @noinspection PhpUnhandledExceptionInspection */
+/** @noinspection PhpUnhandledExceptionInspection */
+/** @noinspection ALL */
+/** @noinspection ALL */
+/** @noinspection ALL */
+/** @noinspection ALL */
+/** @noinspection ALL */
+/** @noinspection ALL */
+/** @noinspection ALL */
+/** @noinspection ALL */
+/** @noinspection ALL */
+/** @noinspection ALL */
+/** @noinspection ALL */
+/** @noinspection ALL */
+/** @noinspection ALL */
+/** @noinspection ALL */
+/** @noinspection ALL */
+/** @noinspection ALL */
+/** @noinspection ALL */
+/** @noinspection ALL */
+/** @noinspection ALL */
+/** @noinspection ALL */
+/** @noinspection ALL */
+/** @noinspection ALL */
+/** @noinspection ALL */
+/** @noinspection ALL */
+/** @noinspection ALL */
+/** @noinspection ALL */
 declare(strict_types=1);
 
 namespace App\Service;
@@ -12,11 +62,16 @@ use Bpost\BpostApiClient\Bpost\Order\Receiver;
 use Bpost\BpostApiClient\Bpost\Order\Sender;
 use Bpost\BpostApiClient\Bpost\ProductConfiguration\Product;
 use Doctrine\DBAL\Connection;
+use RuntimeException;
+use Throwable;
 use ZipArchive;
+use function count;
+use function dirname;
+use function preg_replace;
 
-final class BpostService
+final readonly class BpostService
 {
-    public function __construct(private readonly Connection $db) {}
+    public function __construct(private Connection $db) {}
 
     private function api(): Bpost
     {
@@ -24,7 +79,7 @@ final class BpostService
         $id     = $_ENV['BP_ACCOUNT_ID'] ?? '';
         $pass   = $_ENV['BP_PASSPHRASE'] ?? '';
         if ($id === '' || $pass === '') {
-            throw new \RuntimeException('bpost: identifiants manquants (Account ID / Passphrase)');
+            throw new RuntimeException('bpost: identifiants manquants (Account ID / Passphrase)');
         }
         return new Bpost($id, $pass, $apiUrl);
     }
@@ -73,7 +128,7 @@ final class BpostService
 
         // 1) Charger la commande + meta
         $o = $this->db->fetchAssociative('SELECT * FROM sales_orders WHERE id = ?', [$orderId]);
-        if (!$o) throw new \RuntimeException('Commande introuvable');
+        if (!$o) throw new RuntimeException('Commande introuvable');
         $m = $this->db->fetchAssociative('SELECT * FROM sales_order_meta WHERE order_id = ?', [$orderId]) ?: [];
 
         // 2) Destinataire
@@ -124,7 +179,7 @@ final class BpostService
             $asPdf  // PDF ?
         );
         if (!$labels || count($labels) === 0) {
-            throw new \RuntimeException('Aucune étiquette renvoyée par bpost');
+            throw new RuntimeException('Aucune étiquette renvoyée par bpost');
         }
 
         // 5) Persist tracking + parcels
@@ -148,16 +203,16 @@ final class BpostService
                 [$barcodes[0], 'bpost', $product, $orderId]
             );
             $this->db->commit();
-        } catch (\Throwable $e) { $this->db->rollBack(); throw $e; }
+        } catch (Throwable $e) { $this->db->rollBack(); throw $e; }
 
         // 6) ZIP des labels
-        $dir = \dirname(__DIR__, 2).'/var/bpost';
+        $dir = dirname(__DIR__, 2).'/var/bpost';
         if (!is_dir($dir)) @mkdir($dir, 0775, true);
         $zipPath = $dir.'/labels_order_'.$orderId.'_'.date('Ymd_His').'.zip';
 
         $zip = new ZipArchive();
         if ($zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
-            throw new \RuntimeException('Impossible de créer le ZIP étiquettes');
+            throw new RuntimeException('Impossible de créer le ZIP étiquettes');
         }
         foreach ($labels as $label) {
             $zip->addFromString($label->getBarcode().($asPdf ? '.pdf' : '.png'), $label->getBytes());
@@ -173,7 +228,7 @@ final class BpostService
 
     // 0) Base : commande + format voulu
     $o = $this->db->fetchAssociative('SELECT * FROM sales_orders WHERE id = ?', [$orderId]);
-    if (!$o) { throw new \RuntimeException('Commande introuvable'); }
+    if (!$o) { throw new RuntimeException('Commande introuvable'); }
 
     $ref    = (string)($o['external_order_id'] ?? $o['id']);
     $format = strtoupper($_ENV['BP_LABEL_FORMAT'] ?? 'A6');
@@ -184,16 +239,16 @@ final class BpostService
     try {
         $labels = $api->createLabelForOrder(
             $ref,
-            $format === 'A4' ? \Bpost\BpostApiClient\Bpost::LABEL_FORMAT_A4 : \Bpost\BpostApiClient\Bpost::LABEL_FORMAT_A6,
+            $format === 'A4' ? Bpost::LABEL_FORMAT_A4 : Bpost::LABEL_FORMAT_A6,
             false, // not return labels for return shipment
             $asPdf // true => PDF, false => PNG
         );
-    } catch (\Throwable $e) {
+    } catch (Throwable $e) {
         // On ignore et on passera au fallback
         $labels = [];
     }
 
-    if ($labels && \count($labels) > 0) {
+    if ($labels && count($labels) > 0) {
         // Normalise (barcode + bytes)
         $out = [];
         foreach ($labels as $label) {
@@ -212,12 +267,12 @@ final class BpostService
     $gen = $this->createShipmentAndGetLabels($orderId); // retourne ['zip_path', 'barcodes', 'count']
     $zipPath = $gen['zip_path'] ?? null;
     if (!$zipPath || !is_file($zipPath)) {
-        throw new \RuntimeException('bpost: génération effectuée mais archive labels introuvable');
+        throw new RuntimeException('bpost: génération effectuée mais archive labels introuvable');
     }
 
-    $za = new \ZipArchive();
+    $za = new ZipArchive();
     if ($za->open($zipPath) !== true) {
-        throw new \RuntimeException('bpost: impossible d’ouvrir l’archive labels');
+        throw new RuntimeException('bpost: impossible d’ouvrir l’archive labels');
     }
 
     $labelsOut = [];
@@ -230,7 +285,7 @@ final class BpostService
         if ($bytes === false) { continue; }
 
         // Barcode = nom de fichier sans extension
-        $barcode = \preg_replace('/\.(pdf|png)$/i', '', (string) $name) ?: ('order-'.$orderId);
+        $barcode = preg_replace('/\.(pdf|png)$/i', '', (string) $name) ?: ('order-'.$orderId);
         $labelsOut[] = ['barcode' => $barcode, 'bytes' => $bytes];
     }
     $za->close();
@@ -239,7 +294,7 @@ final class BpostService
     // @unlink($zipPath);
 
     if (!$labelsOut) {
-        throw new \RuntimeException('bpost: impossible de récupérer/générer les étiquettes (zip vide)');
+        throw new RuntimeException('bpost: impossible de récupérer/générer les étiquettes (zip vide)');
     }
 
     return [

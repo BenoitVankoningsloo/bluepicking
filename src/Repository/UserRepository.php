@@ -1,4 +1,7 @@
-<?php declare(strict_types=1);
+<?php /** @noinspection ALL */
+/** @noinspection ALL */
+/** @noinspection ALL */
+declare(strict_types=1);
 
 namespace App\Repository;
 
@@ -25,7 +28,7 @@ final class UserRepository extends ServiceEntityRepository implements PasswordUp
     }
 
     /** @param PasswordAuthenticatedUserInterface $user */
-    public function upgradePassword($user, string $newHashedPassword): void
+    public function upgradePassword(PasswordAuthenticatedUserInterface $user, string $newHashedPassword): void
     {
         if (!$user instanceof User) {
             return;
@@ -44,6 +47,7 @@ final class UserRepository extends ServiceEntityRepository implements PasswordUp
         $qb = $this->createQueryBuilder('u');
 
         if ($q) {
+            /** @noinspection PhpUnnecessaryCurlyVarSyntaxInspection */
             $qb->andWhere('u.name LIKE :q OR u.email LIKE :q')
                ->setParameter('q', "%{$q}%");
         }

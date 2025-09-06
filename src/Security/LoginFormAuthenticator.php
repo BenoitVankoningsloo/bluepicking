@@ -16,6 +16,7 @@ use Symfony\Component\Security\Http\Authenticator\Passport\Credentials\PasswordC
 use Symfony\Component\Security\Http\Authenticator\Passport\Passport;
 use Symfony\Component\Security\Http\SecurityRequestAttributes;
 use Symfony\Component\Security\Http\Util\TargetPathTrait;
+use function is_string;
 
 final class LoginFormAuthenticator extends AbstractLoginFormAuthenticator
 {
@@ -37,7 +38,7 @@ final class LoginFormAuthenticator extends AbstractLoginFormAuthenticator
 
         // reCAPTCHA v2 (token du POST /login)
         $captchaToken = $request->request->get('g-recaptcha-response');
-        $ok = $this->recaptcha->verify(\is_string($captchaToken) ? $captchaToken : null, $request->getClientIp());
+        $ok = $this->recaptcha->verify(is_string($captchaToken) ? $captchaToken : null, $request->getClientIp());
         if (!$ok) {
             throw new CustomUserMessageAuthenticationException('Veuillez valider le reCAPTCHA.');
         }

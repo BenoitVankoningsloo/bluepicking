@@ -1,15 +1,18 @@
 <?php
+/** @noinspection ALL */
 declare(strict_types=1);
 
 namespace App\Controller\Admin;
 
 use App\Service\OdooSyncService;
 use App\Service\OdooSalesService;
+use DateTimeImmutable;
 use Doctrine\DBAL\Connection;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\RedirectResponse;
 use Symfony\Component\Routing\Attribute\Route;
+use Throwable;
 
 final class OrderOdooActionsController extends AbstractController
 {
@@ -39,11 +42,11 @@ final class OrderOdooActionsController extends AbstractController
         try {
             if ($ref === '') {
                 // Batch par défaut: 30 derniers jours, états principaux
-                $since  = (new \DateTimeImmutable('-30 days'))->format('Y-m-d');
+                $since  = (new DateTimeImmutable('-30 days'))->format('Y-m-d');
                 $states = ['draft','sent','sale','done','cancel'];
 
                 // Doit retourner ['imported'=>int,'last_ref'=>?string,'errors'=>int]
-                $res = $sync->syncBatch($states, $since, null, 500, 0);
+                $res = $sync->syncBatch($states, $since);
                 $imported = (int)($res['imported'] ?? 0);
                 $errors   = (int)($res['errors'] ?? 0);
                 $lastRef  = $res['last_ref'] ?? '—';
@@ -67,7 +70,7 @@ final class OrderOdooActionsController extends AbstractController
             $this->addFlash('success', 'Import Odoo OK : '.$ref);
             return $this->redirectToRoute('admin_orders_show', ['id' => $orderId]);
 
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             $this->addFlash('danger', 'Import Odoo: '.$e->getMessage());
             return $this->redirectToRoute('admin_orders_list');
         }
@@ -102,7 +105,7 @@ final class OrderOdooActionsController extends AbstractController
             }
             $svc->confirmSaleOrder($soId);
             $this->addFlash('success', 'Commande Odoo confirmée.');
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             $this->addFlash('danger', 'Odoo: '.$e->getMessage());
         }
 
@@ -138,7 +141,7 @@ final class OrderOdooActionsController extends AbstractController
             }
             $svc->cancelSaleOrder($soId);
             $this->addFlash('success', 'Commande Odoo annulée.');
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             $this->addFlash('danger', 'Odoo: '.$e->getMessage());
         }
 
@@ -161,7 +164,7 @@ final class OrderOdooActionsController extends AbstractController
         try {
             $svc->refreshLocalOrderLines($this->db, $id);
             $this->addFlash('success', 'Lignes + stock rafraîchis depuis Odoo');
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             $this->addFlash('danger', 'Odoo: '.$e->getMessage());
         }
 
@@ -206,7 +209,7 @@ final class OrderOdooActionsController extends AbstractController
             );
 
             $this->addFlash('success', 'Bon de livraison validé dans Odoo (stock à jour).');
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             $this->addFlash('danger', 'Odoo: '.$e->getMessage());
         }
 

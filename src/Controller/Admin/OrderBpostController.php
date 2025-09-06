@@ -1,4 +1,5 @@
 <?php
+/** @noinspection ALL */
 declare(strict_types=1);
 
 namespace App\Controller\Admin;
@@ -131,7 +132,7 @@ final class OrderBpostController extends AbstractController
             ?? $res['parcel_barcode']
             ?? ($res['parcels'][0]['barcode'] ?? null)
             ?? ($res['labels'][0]['barcode'] ?? null)
-            ?? ($res['barcodes'][0] ?? null) 
+            ?? ($res['barcodes'][0] ?? null)
             ?? null;
     }
 

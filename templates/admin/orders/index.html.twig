@@ -52,12 +52,22 @@
 
   {# ==== Filtres ==== #}
   <form method="get" class="filters mb-3">
-    <input type="text" name="q" class="form-control" placeholder="Rechercher (ID ext., client, email, tracking)" value="{{ q }}">
-    <input type="text" name="status" class="form-control ms-2" placeholder="Statut (draft, sale, done, ...)" value="{{ status }}">
-    <input type="text" name="source" class="form-control ms-2" placeholder="Source (manual, odoo, web)" value="{{ source }}">
-    <input type="date" name="placed_from" class="form-control ms-2" value="{{ placed_from }}">
-    <input type="date" name="placed_to" class="form-control ms-2" value="{{ placed_to }}">
-    <input type="number" name="per_page" class="form-control ms-2" min="5" max="200" value="{{ per_page }}" title="Par page">
+      <label>
+          <input type="text" name="q" class="form-control" placeholder="Rechercher (ID ext., client, email, tracking)" value="{{ q }}">
+      </label>
+      <label>
+          <input type="text" name="status" class="form-control ms-2" placeholder="Statut (draft, sale, done, ...)" value="{{ status }}">
+      </label>
+      <label>
+          <input type="text" name="source" class="form-control ms-2" placeholder="Source (manual, odoo, web)" value="{{ source }}">
+      </label>
+      <label>
+          <input type="date" name="placed_from" class="form-control ms-2" value="{{ placed_from }}">
+      </label>
+      <label>
+          <input type="date" name="placed_to" class="form-control ms-2" value="{{ placed_to }}">
+      </label>
+      <input type="number" name="per_page" class="form-control ms-2" min="5" max="200" value="{{ per_page }}" title="Par page">
     <button class="btn btn-primary ms-2">Filtrer</button>
     {% if q or status or source or placed_from or placed_to %}
       <a class="btn btn-link ms-2" href="{{ path(app.request.attributes.get('_route')) }}">Réinitialiser</a>
@@ -72,9 +82,11 @@
       {# Import Odoo (ref vide => batch 30 jours) #}
       <form method="post" action="{{ path('admin_odoo_import_by_ref') }}" class="d-flex align-items-center">
         <input type="hidden" name="_token" value="{{ csrf_token('odoo_import') }}">
-        <input type="text" name="ref" class="form-control form-control-sm d-inline-block" style="width:220px"
-               placeholder="Réf Odoo (ex. S00042) — vide = batch">
-        <button class="btn btn-outline-primary btn-sm ms-1">Importer depuis Odoo</button>
+          <label>
+              <input type="text" name="ref" class="form-control form-control-sm d-inline-block" style="width:220px"
+                     placeholder="Réf Odoo (ex. S00042) — vide = batch">
+          </label>
+          <button class="btn btn-outline-primary btn-sm ms-1">Importer depuis Odoo</button>
       </form>
 
       <a class="btn btn-outline-secondary btn-sm"

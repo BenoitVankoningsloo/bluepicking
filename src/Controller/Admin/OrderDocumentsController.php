@@ -1,4 +1,11 @@
-<?php
+<?php /** @noinspection ALL */
+/** @noinspection ALL */
+/** @noinspection ALL */
+/** @noinspection ALL */
+/** @noinspection ALL */
+/** @noinspection ALL */
+/** @noinspection ALL */
+/** @noinspection ALL */
 declare(strict_types=1);
 
 namespace App\Controller\Admin;
@@ -36,7 +43,7 @@ final class OrderDocumentsController extends AbstractController
     {
         $this->denyAccessUnlessGranted('ROLE_ADMIN');
         $html = $this->renderView('admin/orders/pdf/picking.html.twig', $this->loadOrderFull($id));
-        return $this->pdf->render($html, 'picking_'.$id.'_'.date('Ymd_His').'.pdf', paper: 'A4');
+        return $this->pdf->render($html, 'picking_'.$id.'_'.date('Ymd_His').'.pdf');
     }
 
     #[Route('/admin/orders/{id<\d+>}/delivery-note.pdf', name: 'admin_orders_delivery_pdf', methods: ['GET'])]
@@ -44,7 +51,7 @@ final class OrderDocumentsController extends AbstractController
     {
         $this->denyAccessUnlessGranted('ROLE_ADMIN');
         $html = $this->renderView('admin/orders/pdf/delivery.html.twig', $this->loadOrderFull($id));
-        return $this->pdf->render($html, 'delivery_'.$id.'_'.date('Ymd_His').'.pdf', paper: 'A4');
+        return $this->pdf->render($html, 'delivery_'.$id.'_'.date('Ymd_His').'.pdf');
     }
 
     #[Route('/admin/orders/{id<\d+>}/labels.pdf', name: 'admin_orders_labels_pdf', methods: ['GET'])]

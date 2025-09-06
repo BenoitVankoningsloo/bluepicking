@@ -3,6 +3,7 @@
 namespace App\Entity;
 
 use App\Repository\UserRoleChangeLogRepository;
+use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity(repositoryClass: UserRoleChangeLogRepository::class)]
@@ -23,13 +24,13 @@ class UserRoleChangeLog
     private ?User $admin;
 
     #[ORM\Column(type: 'json')]
-    private array $oldRoles = [];
+    private array $oldRoles;
 
     #[ORM\Column(type: 'json')]
-    private array $newRoles = [];
+    private array $newRoles;
 
     #[ORM\Column(type: 'datetime_immutable')]
-    private \DateTimeImmutable $changedAt;
+    private DateTimeImmutable $changedAt;
 
     public function __construct(User $target, ?User $admin, array $oldRoles, array $newRoles)
     {
@@ -37,7 +38,7 @@ class UserRoleChangeLog
         $this->admin = $admin;
         $this->oldRoles = array_values(array_unique($oldRoles));
         $this->newRoles = array_values(array_unique($newRoles));
-        $this->changedAt = new \DateTimeImmutable();
+        $this->changedAt = new DateTimeImmutable();
     }
 
     public function getId(): ?int { return $this->id; }
@@ -45,6 +46,6 @@ class UserRoleChangeLog
     public function getAdmin(): ?User { return $this->admin; }
     public function getOldRoles(): array { return $this->oldRoles; }
     public function getNewRoles(): array { return $this->newRoles; }
-    public function getChangedAt(): \DateTimeImmutable { return $this->changedAt; }
+    public function getChangedAt(): DateTimeImmutable { return $this->changedAt; }
 }
 

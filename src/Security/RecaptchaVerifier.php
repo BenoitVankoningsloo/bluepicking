@@ -3,12 +3,13 @@
 namespace App\Security;
 
 use Symfony\Contracts\HttpClient\HttpClientInterface;
+use Throwable;
 
-final class RecaptchaVerifier
+final readonly class RecaptchaVerifier
 {
     public function __construct(
-        private readonly string $secretKey,
-        private readonly ?HttpClientInterface $httpClient = null,
+        private string               $secretKey,
+        private ?HttpClientInterface $httpClient = null,
     ) {}
 
     public function verify(?string $token, ?string $ip = null): bool
@@ -47,7 +48,7 @@ final class RecaptchaVerifier
             }
 
             return is_array($data) && ($data['success'] ?? false) === true;
-        } catch (\Throwable) {
+        } catch (Throwable) {
             return false;
         }
     }

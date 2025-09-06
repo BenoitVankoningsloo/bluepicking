@@ -7,10 +7,6 @@
 }
 
 /* Header de card uniforme */
-.card-header {
-    border-radius: 0.75rem 0.75rem 0 0;
-    font-weight: 600;
-}
 
 /* Boutons principaux plus arrondis */
 .btn {
@@ -23,11 +19,6 @@
 }
 
 /* Centrage flex utilitaire */
-.container-flex-center {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-}
 
 /* ===== Footer ===== */
 .footer {

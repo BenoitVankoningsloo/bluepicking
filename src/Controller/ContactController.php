@@ -5,12 +5,14 @@ use App\Entity\ContactMessage;
 use App\Form\ContactFormType;
 use App\Security\RecaptchaVerifier;
 use App\Service\ContactEmailer;
+use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\Form\FormError;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
+use function method_exists;
 
 final class ContactController extends AbstractController
 {
@@ -21,9 +23,9 @@ final class ContactController extends AbstractController
     {
         $message = new ContactMessage();
 
-        if (!\method_exists($message, 'getCreatedAt') || $message->getCreatedAt() === null) {
-            if (\method_exists($message, 'setCreatedAt')) {
-                $message->setCreatedAt(new \DateTimeImmutable());
+        if (!method_exists($message, 'getCreatedAt') || $message->getCreatedAt() === null) {
+            if (method_exists($message, 'setCreatedAt')) {
+                $message->setCreatedAt(new DateTimeImmutable());
             }
         }
 

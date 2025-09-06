@@ -2,7 +2,9 @@
 
 namespace App\Controller\Admin;
 
+use App\Entity\User;
 use App\Repository\UserRepository;
+use DateTimeImmutable;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\HeaderUtils;
 use Symfony\Component\HttpFoundation\Request;
@@ -42,7 +44,7 @@ final class AdminUserExportController extends AbstractController
             $iter  = method_exists($query, 'toIterable') ? $query->toIterable() : $query->getResult();
 
             foreach ($iter as $user) {
-                /** @var \App\Entity\User $user */
+                /** @var User $user */
                 fputcsv($out, [
                     $user->getId(),
                     $sanitize($user->getEmail()),
@@ -58,7 +60,7 @@ final class AdminUserExportController extends AbstractController
             }
         });
 
-        $filename    = sprintf('users-%s.csv', (new \DateTimeImmutable())->format('Ymd-His'));
+        $filename    = sprintf('users-%s.csv', (new DateTimeImmutable())->format('Ymd-His'));
         $disposition = HeaderUtils::makeDisposition(HeaderUtils::DISPOSITION_ATTACHMENT, $filename);
 
         $response->headers->set('Content-Type', 'text/csv; charset=UTF-8');

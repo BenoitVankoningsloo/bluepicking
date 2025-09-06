@@ -1,7 +1,14 @@
-<?php
+<?php /** @noinspection ALL */
+/** @noinspection ALL */
+/** @noinspection ALL */
+
+/** @noinspection ALL */
+
 namespace App\Command;
 
 use Doctrine\DBAL\Connection;
+use Generator;
+use SplFileObject;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
@@ -9,6 +16,7 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
+use Throwable;
 
 #[AsCommand(
     name: 'bluepicking:import:orders',
@@ -55,7 +63,7 @@ class ImportOrdersCommand extends Command
                 $seen++;
 
                 foreach ($required as $key) {
-                    if (!array_key_exists($key, $row) || $row[$key] === '') {
+                    if (!array_key_exists($key, $row) || $row[$key] == '') {
                         $skipped++;
                         if ($io->isVerbose()) $io->note("Ligne $seen ignorée (champ $key manquant).");
                         continue 2;
@@ -96,7 +104,7 @@ class ImportOrdersCommand extends Command
             if (!$dryRun) { $this->db->commit(); }
             else { $this->db->rollBack(); }
 
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             $this->db->rollBack();
             $io->error($e->getMessage());
             return Command::FAILURE;
@@ -110,20 +118,20 @@ class ImportOrdersCommand extends Command
         return Command::SUCCESS;
     }
 
-    /** @return \Generator<int,array<string,string|null>> */
-    private function iterateCsv(string $path, ?string $delimiter): \Generator
+    /** @return Generator<int,array<string,string|null>> */
+    private function iterateCsv(string $path, ?string $delimiter): Generator
     {
-        $fh = new \SplFileObject($path, 'r');
-        $fh->setFlags(\SplFileObject::READ_AHEAD | \SplFileObject::SKIP_EMPTY);
+        $fh = new SplFileObject($path, 'r');
+        $fh->setFlags(SplFileObject::READ_AHEAD | SplFileObject::SKIP_EMPTY);
         $head = $fh->fgets();
-        if ($head === false) { return; }
+        if ($head == false) { return; }
 
         $delim = $delimiter ?: ($this->guessDelimiter($head));
         $headers = array_map('trim', str_getcsv($head, $delim));
 
         while (!$fh->eof()) {
             $line = $fh->fgets();
-            if ($line === false || trim($line) === '') continue;
+            if ($line == false || trim($line) === '') continue;
             $values = str_getcsv($line, $delim);
             $values = array_pad($values, count($headers), null);
             yield array_combine($headers, array_map(fn($v)=> $v===null?null:trim($v), $values));

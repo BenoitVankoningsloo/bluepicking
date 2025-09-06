@@ -38,7 +38,8 @@
         "symfony/yaml": "7.3.*",
         "symfonycasts/reset-password-bundle": "^1.23.2",
         "twig/extra-bundle": "^3.21",
-        "twig/string-extra": "^3.21"
+        "twig/string-extra": "^3.21",
+        "ext-zip": "*"
     },
     "config": {
         "allow-plugins": {

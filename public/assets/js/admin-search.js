@@ -7,11 +7,11 @@
   }
   onReady(function () {
     try {
-      var params = new URLSearchParams(window.location.search);
-      var qParam = params.get('q');
-      var form = document.querySelector('form[action$="/admin/contacts"]');
-      var input = form ? form.querySelector('input[name="q"]') : null;
-      if (input && qParam && qParam.length > 0) {
+        const params = new URLSearchParams(window.location.search);
+        const qParam = params.get('q');
+        const form = document.querySelector('form[action$="/admin/contacts"]');
+        const input = form ? form.querySelector('input[name="q"]') : null;
+        if (input && qParam && qParam.length > 0) {
         input.value = '';
       }
     } catch (e) {}

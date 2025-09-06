@@ -8,8 +8,8 @@
   onReady(function () {
     document.querySelectorAll('form.js-confirm-delete').forEach(function (form) {
       form.addEventListener('submit', function (e) {
-        var msg = form.getAttribute('data-confirm') || 'Confirmer la suppression ?';
-        if (!window.confirm(msg)) {
+          const msg = form.getAttribute('data-confirm') || 'Confirmer la suppression ?';
+          if (!window.confirm(msg)) {
           e.preventDefault();
         }
       });

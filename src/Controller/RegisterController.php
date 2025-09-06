@@ -1,16 +1,21 @@
-<?php declare(strict_types=1);
+<?php /** @noinspection ALL */
+declare(strict_types=1);
 
 namespace App\Controller;
 
 use App\Entity\User;
 use App\Form\RegisterType;
 use App\Security\RecaptchaVerifier;
+use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 use Symfony\Component\Routing\Attribute\Route;
+use Throwable;
+use function is_string;
+use function method_exists;
 
 final class RegisterController extends AbstractController
 {
@@ -29,15 +34,14 @@ final class RegisterController extends AbstractController
 
         $siteKey = '';
         try {
-            /** @var string $siteKey */
             $siteKey = (string) $this->getParameter('app.recaptcha_site_key');
-        } catch (\Throwable) {
+        } catch (Throwable) {
             $siteKey = '';
         }
 
         if ($form->isSubmitted()) {
             $token = $request->request->get('g-recaptcha-response');
-            $isHuman = $this->recaptcha->verify(\is_string($token) ? $token : null, $request->getClientIp());
+            $isHuman = $this->recaptcha->verify(is_string($token) ? $token : null, $request->getClientIp());
             if (!$isHuman) {
                 $this->addFlash('danger', 'Veuillez valider le reCAPTCHA.');
                 return $this->render('security/register.html.twig', [
@@ -51,8 +55,8 @@ final class RegisterController extends AbstractController
                 if ($plain !== '') {
                     $user->setPassword($this->hasher->hashPassword($user, $plain));
                 }
-                if (\method_exists($user, 'setCreatedAt')) {
-                    $user->setCreatedAt(new \DateTimeImmutable('now'));
+                if (method_exists($user, 'setCreatedAt')) {
+                    $user->setCreatedAt(new DateTimeImmutable('now'));
                 }
 
                 $this->em->persist($user);

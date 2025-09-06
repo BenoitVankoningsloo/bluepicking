@@ -5,6 +5,7 @@ namespace App\Controller\Admin;
 
 use App\Service\OdooSalesService;
 use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Exception;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\RedirectResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -14,6 +15,9 @@ final class OdooController extends AbstractController
 {
     public function __construct(private readonly Connection $db) {}
 
+    /**
+     * @throws Exception
+     */
     #[Route('/admin/odoo/orders/import/{ref}', name: 'admin_odoo_import_order', methods: ['GET'])]
     public function import(string $ref, OdooSalesService $svc): RedirectResponse
     {
@@ -59,6 +63,9 @@ final class OdooController extends AbstractController
         return $this->redirectToRoute('admin_orders_show', ['id' => $orderId]);
     }
 
+    /**
+     * @throws Exception
+     */
     #[Route('/admin/odoo/orders/{id<\\d+>}/confirm', name: 'admin_odoo_confirm_order', methods: ['POST'])]
     public function confirm(int $id, Request $req, OdooSalesService $svc): RedirectResponse
     {

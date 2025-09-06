@@ -3,6 +3,7 @@
 namespace App\Entity;
 
 use App\Repository\ContactMessageRepository;
+use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity(repositoryClass: ContactMessageRepository::class)]
@@ -24,14 +25,14 @@ class ContactMessage
     private string $message;
 
     #[ORM\Column(type: 'datetime_immutable')]
-    private \DateTimeImmutable $createdAt;
+    private DateTimeImmutable $createdAt;
 
     public function __construct(string $name = '', string $email = '', string $message = '')
     {
         $this->name = $name;
         $this->email = $email;
         $this->message = $message;
-        $this->createdAt = new \DateTimeImmutable();
+        $this->createdAt = new DateTimeImmutable();
     }
 
     public function getId(): ?int { return $this->id; }
@@ -41,7 +42,7 @@ class ContactMessage
     public function setEmail(string $email): self { $this->email = $email; return $this; }
     public function getMessage(): string { return $this->message; }
     public function setMessage(string $message): self { $this->message = $message; return $this; }
-    public function getCreatedAt(): \DateTimeImmutable { return $this->createdAt; }
-    public function setCreatedAt(\DateTimeImmutable $createdAt): self { $this->createdAt = $createdAt; return $this; }
+    public function getCreatedAt(): DateTimeImmutable { return $this->createdAt; }
+    public function setCreatedAt(DateTimeImmutable $createdAt): self { $this->createdAt = $createdAt; return $this; }
 }
 

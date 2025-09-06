@@ -1,4 +1,5 @@
-<?php declare(strict_types=1);
+<?php /** @noinspection ALL */
+declare(strict_types=1);
 
 namespace App\Service;
 
@@ -7,16 +8,18 @@ use Psr\Log\LoggerInterface;
 use Symfony\Bridge\Twig\Mime\TemplatedEmail;
 use Symfony\Component\Mailer\MailerInterface;
 use Symfony\Component\Mime\Address;
+use Throwable;
+use Twig\Environment;
 
-final class ContactEmailer
+final readonly class ContactEmailer
 {
     public function __construct(
-        private readonly MailerInterface $mailer,
-        private readonly \Twig\Environment $twig,
-        private readonly LoggerInterface $logger,
-        private readonly string $toAddress,   // DESTINATAIRE ADMIN (CONTACT_TO)
-        private readonly string $fromAddress, // EXPÉDITEUR FIXE (CONTACT_FROM_EMAIL)
-        private readonly bool $enabled,
+        private MailerInterface   $mailer,
+        private Environment $twig,
+        private LoggerInterface   $logger,
+        private string            $toAddress,   // DESTINATAIRE ADMIN (CONTACT_TO)
+        private string            $fromAddress, // EXPÉDITEUR FIXE (CONTACT_FROM_EMAIL)
+        private bool              $enabled,
     ) {}
 
     /**
@@ -37,7 +40,7 @@ final class ContactEmailer
                 'id' => $msg->getId(), 'trace' => $traceId, 'to' => $this->toAddress,
             ]);
             return true;
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             $this->logger->error('ContactEmailer admin send failed', [
                 'error' => $e->getMessage(), 'id' => $msg->getId(),
             ]);
@@ -64,10 +67,10 @@ final class ContactEmailer
             $ack     = $this->buildAckEmail($msg, $traceId);
             $this->mailer->send($ack);
             $this->logger->info('ContactEmailer ack sent', [
-                'id' => $msg->getId(), 'trace' => $traceId, 'to' => (string) $msg->getEmail(),
+                'id' => $msg->getId(), 'trace' => $traceId, 'to' => $msg->getEmail(),
             ]);
             return true;
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             $this->logger->error('ContactEmailer ack send failed', [
                 'error' => $e->getMessage(), 'id' => $msg->getId(),
             ]);
@@ -92,10 +95,10 @@ final class ContactEmailer
     private function exportVars(ContactMessage $msg): array
     {
         $contactId      = (int) $msg->getId();
-        $contactEmail   = (string) ($msg->getEmail() ?? '');
-        $contactName    = method_exists($msg, 'getName')    ? (string) ($msg->getName() ?? '')    : '';
+        $contactEmail   = $msg->getEmail() ?? '';
+        $contactName    = method_exists($msg, 'getName')    ? $msg->getName() ?? '' : '';
         $contactSubject = method_exists($msg, 'getSubject') ? (string) ($msg->getSubject() ?? '') : '';
-        $contactBody    = method_exists($msg, 'getMessage') ? (string) ($msg->getMessage() ?? '') : '';
+        $contactBody    = method_exists($msg, 'getMessage') ? $msg->getMessage() ?? '' : '';
         $contactPhone   = method_exists($msg, 'getPhone')   ? (string) ($msg->getPhone() ?? '')   : '';
         $contactCompany = method_exists($msg, 'getCompany') ? (string) ($msg->getCompany() ?? '') : '';
         $submittedAt    = method_exists($msg, 'getCreatedAt') && $msg->getCreatedAt()

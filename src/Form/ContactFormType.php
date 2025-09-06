@@ -27,7 +27,7 @@ final class ContactFormType extends AbstractType
                 'label' => 'Votre email',
                 'constraints' => [
                     new Assert\NotBlank(message: 'L’email est obligatoire'),
-                    new Assert\Email(mode: Assert\Email::VALIDATION_MODE_HTML5, message: 'Email invalide'),
+                    new Assert\Email(message: 'Email invalide', mode: Assert\Email::VALIDATION_MODE_HTML5),
                     new Assert\Length(max: 180),
                 ],
             ])

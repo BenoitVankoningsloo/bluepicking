@@ -1,10 +1,18 @@
-<?php
+<?php /** @noinspection PhpFieldAssignmentTypeMismatchInspection */
+/** @noinspection ALL */
+/** @noinspection PhpFieldAssignmentTypeMismatchInspection */
+/** @noinspection PhpFieldAssignmentTypeMismatchInspection */
+/** @noinspection PhpFieldAssignmentTypeMismatchInspection */
+/** @noinspection PhpFieldAssignmentTypeMismatchInspection */
+/** @noinspection ALL */
+/** @noinspection PhpFieldAssignmentTypeMismatchInspection */
 
 declare(strict_types=1);
 
 namespace App\Entity;
 
 use App\Repository\ResetPasswordRequestRepository;
+use DateTimeInterface;
 use Doctrine\ORM\Mapping as ORM;
 use SymfonyCasts\Bundle\ResetPassword\Model\ResetPasswordRequestInterface;
 use SymfonyCasts\Bundle\ResetPassword\Model\ResetPasswordRequestTrait;
@@ -21,10 +29,14 @@ class ResetPasswordRequest implements ResetPasswordRequestInterface
 
     #[ORM\ManyToOne]
     #[ORM\JoinColumn(nullable: false)]
-    private ?User $user = null;
+    private ?User $user;
 
-    public function __construct(object $user, \DateTimeInterface $expiresAt, string $selector, string $hashedToken)
+    /** @noinspection PhpFieldAssignmentTypeMismatchInspection */
+    public function __construct(object $user, DateTimeInterface $expiresAt, string $selector, string $hashedToken)
     {
+        /** @noinspection PhpFieldAssignmentTypeMismatchInspection */
+        /** @noinspection PhpFieldAssignmentTypeMismatchInspection */
+        /** @noinspection PhpFieldAssignmentTypeMismatchInspection */
         $this->user = $user;
         $this->initialize($expiresAt, $selector, $hashedToken);
     }

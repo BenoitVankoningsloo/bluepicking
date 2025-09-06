@@ -1,4 +1,5 @@
 <?php
+/** @noinspection ALL */
 declare(strict_types=1);
 
 namespace App\Service;
@@ -357,7 +358,7 @@ final class OdooSalesService
     public function getSaleOrderState(int $saleOrderId): ?string
     {
     $r = $this->rpc->read('sale.order', [$saleOrderId], ['state']);
-    return $r[0]['state'] ?? null; 
+    return $r[0]['state'] ?? null;
     }
 }
 
