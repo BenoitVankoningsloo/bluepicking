@@ -1,0 +1,36 @@
+{% set name = firstName is not empty ? firstName : 'Bonjour' %}
+
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8" />
+    <title>Bienvenue sur BluePicking</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+</head>
+<body style="font-family: Arial, Helvetica, sans-serif; color: #222; line-height: 1.5; margin: 0; padding: 0;">
+    <div style="max-width:600px;margin:0 auto;padding:24px;">
+        <h2 style="margin:0 0 16px 0;color:#0b5ed7;">Bienvenue sur BluePicking</h2>
+
+        <p style="margin:0 0 12px 0;">{{ name }},</p>
+        <p style="margin:0 0 12px 0;">
+            Votre inscription a bien été prise en compte. Vous pouvez dès maintenant vous connecter via la page de connexion.
+        </p>
+
+        <p style="margin:0 0 16px 0;">
+            <a href="{{ loginUrl }}" style="display:inline-block;background:#0b5ed7;color:#fff;text-decoration:none;padding:10px 16px;border-radius:4px;">
+                Accéder à la page de connexion
+            </a>
+        </p>
+
+        <p style="margin:0 0 12px 0;">
+            Identifiant (email) : <strong>{{ userEmail }}</strong>
+        </p>
+
+        <hr style="border:none;border-top:1px solid #ddd;margin:20px 0;" />
+
+        <p style="font-size:12px;color:#666;margin:0;">
+            Cet email a été envoyé automatiquement. Une copie a été transmise à l’administrateur.
+        </p>
+    </div>
+</body>
+</html>
