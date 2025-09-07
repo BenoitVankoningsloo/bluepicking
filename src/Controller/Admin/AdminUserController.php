@@ -143,7 +143,7 @@ final class AdminUserController extends AbstractController
                 : (\is_string($postedRoles) && $postedRoles !== '' ? [$postedRoles] : []);
 
             // Sanitize : on ne garde que des rôles connus
-            $allowed = ['ROLE_USER', 'ROLE_ADMIN'];
+            $allowed = ['ROLE_USER', 'ROLE_ADMIN', 'ROLE_PREPARATEUR'];
             $roles   = \array_values(\array_intersect($roles, $allowed));
             if (!\in_array('ROLE_USER', $roles, true)) {
                 $roles[] = 'ROLE_USER';

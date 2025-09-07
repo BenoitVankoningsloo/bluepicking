@@ -28,6 +28,21 @@ final class OdooSalesService
         ]);
     }
 
+    /** Liste des pickings (stock.picking), même auth que orders via OdooClient */
+    public function listPickings(
+        array $domain,
+        int $limit = 500,
+        int $offset = 0,
+        array $fields = ['name','origin','partner_id','scheduled_date','state','write_date']
+    ): array {
+        return $this->rpc->callKW('stock.picking', 'search_read', [$domain], [
+            'fields' => $fields,
+            'limit'  => $limit,
+            'offset' => $offset,
+            'order'  => 'scheduled_date desc',
+        ]);
+    }
+
     /** Récupère SO + partner livraison + lignes + pickings + agrégats demandé/préparé */
     public function fetchSaleOrder(string|int $idOrName): array
     {
@@ -359,6 +374,224 @@ final class OdooSalesService
     {
     $r = $this->rpc->read('sale.order', [$saleOrderId], ['state']);
     return $r[0]['state'] ?? null;
+    }
+
+    /** Récupère un picking + ses moves, avec stocks produits (forecast/on hand) et picked actuel */
+    public function getPickingWithMoves(int $pickingId): array
+    {
+        $p = $this->rpc->read('stock.picking', [$pickingId], ['id','name','origin','state','partner_id','scheduled_date']);
+        if (!$p || empty($p[0])) {
+            throw new \RuntimeException('Odoo: picking introuvable');
+        }
+        $picking = $p[0];
+
+        $hasMoveQtyDone = $this->modelHasField('stock.move', 'quantity_done');
+        $hasPickedFlag  = $this->modelHasField('stock.move', 'picked');
+        $fields = ['id','product_id','product_uom','product_uom_qty','move_line_ids'];
+        if ($hasMoveQtyDone) {
+            $fields[] = 'quantity_done';
+        }
+        if ($hasPickedFlag) {
+            $fields[] = 'picked';
+        }
+
+        $moves = $this->rpc->callKW('stock.move', 'search_read', [[['picking_id', '=', $pickingId]]], [
+            'fields' => $fields,
+            'limit'  => 2000
+        ]);
+
+        $pids = [];
+        $allMlIds = [];
+        foreach ($moves as $m) {
+            $pid = is_array($m['product_id'] ?? null) ? ($m['product_id'][0] ?? null) : ($m['product_id'] ?? null);
+            if ($pid) { $pids[(int)$pid] = true; }
+            if (!empty($m['move_line_ids'])) {
+                foreach ($m['move_line_ids'] as $mlId) { $allMlIds[] = $mlId; }
+            }
+        }
+
+        $pickedFromLines = $allMlIds ? $this->sumMoveLineDoneByProduct($allMlIds) : [];
+
+        $prodStocks = [];
+        if ($pids) {
+            $ids = array_keys($pids);
+            $prods = $this->rpc->read('product.product', $ids, ['qty_available','virtual_available','default_code','name','uom_id']);
+            foreach ($prods as $pr) {
+                $prodStocks[(int)$pr['id']] = [
+                    'qty_available'     => (float)($pr['qty_available'] ?? 0.0),
+                    'virtual_available' => (float)($pr['virtual_available'] ?? 0.0),
+                    'default_code'      => (string)($pr['default_code'] ?? ''),
+                    'name'              => (string)($pr['name'] ?? ''),
+                    'uom'               => is_array($pr['uom_id'] ?? null) ? ($pr['uom_id'][1] ?? '') : '',
+                ];
+            }
+        }
+
+        // Quantités initialement commandées (SO) via origin -> sale.order -> sale.order.line
+        $orderedByPid = [];
+        $origin = (string)($picking['origin'] ?? '');
+        if ($origin !== '') {
+            try {
+                $soList = $this->rpc->callKW('sale.order', 'search_read', [[['name', '=', $origin]]], [
+                    'fields' => ['id','name'], 'limit' => 1
+                ]);
+                if ($soList) {
+                    $soId = (int)($soList[0]['id'] ?? 0);
+                    if ($soId > 0) {
+                        $sol = $this->rpc->callKW('sale.order.line','search_read', [[['order_id', '=', $soId], ['display_type','=',false]]], [
+                            'fields' => ['product_id','product_uom_qty'], 'limit' => 2000
+                        ]);
+                        foreach ($sol as $l) {
+                            $pid = is_array($l['product_id'] ?? null) ? ($l['product_id'][0] ?? null) : ($l['product_id'] ?? null);
+                            if ($pid) {
+                                $orderedByPid[(int)$pid] = ($orderedByPid[(int)$pid] ?? 0.0) + (float)($l['product_uom_qty'] ?? 0.0);
+                            }
+                        }
+                    }
+                }
+            } catch (\Throwable) {
+                // silencieux: pas bloquant si non trouvé
+            }
+        }
+
+        $lines = [];
+        foreach ($moves as $m) {
+            $pid   = is_array($m['product_id'] ?? null) ? ($m['product_id'][0] ?? null) : ($m['product_id'] ?? null);
+            $label = is_array($m['product_id'] ?? null) ? ($m['product_id'][1] ?? '') : '';
+            $uom   = is_array($m['product_uom'] ?? null) ? ($m['product_uom'][1] ?? '') : '';
+
+            $demanded = (float)($m['product_uom_qty'] ?? 0.0);
+            $pickedQty = 0.0;
+            if ($pid) {
+                if ($hasMoveQtyDone && isset($m['quantity_done'])) {
+                    $pickedQty = (float)$m['quantity_done'];
+                } else {
+                    $pickedQty = (float)($pickedFromLines[(int)$pid] ?? 0.0);
+                }
+            }
+
+            $stocks  = $pid && isset($prodStocks[(int)$pid]) ? $prodStocks[(int)$pid] : ['qty_available'=>0.0,'virtual_available'=>0.0,'default_code'=>'','name'=>'','uom'=>''];
+            $ordered = $pid && isset($orderedByPid[(int)$pid]) ? (float)$orderedByPid[(int)$pid] : null;
+
+            // picked booléen venant d’Odoo si disponible, sinon fallback indicatif
+            $pickedFlag = false;
+            if (isset($m['picked'])) {
+                $pickedFlag = (bool)$m['picked'];
+            } else {
+                $pickedFlag = ($pickedQty >= $demanded && $demanded > 0);
+            }
+
+            $lines[] = [
+                'product_id'       => (int)$pid,
+                'product_label'    => $label !== '' ? $label : ($stocks['default_code'] !== '' ? '['.$stocks['default_code'].'] '.$stocks['name'] : $stocks['name']),
+                'product_uom'      => $uom !== '' ? $uom : $stocks['uom'],
+                'product_uom_qty'  => $demanded,         // demandé sur le mouvement
+                'ordered_qty'      => $ordered,          // demandé initialement (SO)
+                'picked'           => $pickedFlag,       // bool Odoo si présent
+                'picked_qty'       => $pickedQty,        // quantité déjà faite
+                'forecast'         => (float)$stocks['virtual_available'],
+                'on_hand'          => (float)$stocks['qty_available'],
+            ];
+        }
+
+        return ['picking' => $picking, 'lines' => $lines];
+    }
+
+    /** Met à jour les quantités “picked” sans valider le picking */
+    public function setPickedQuantities(int $pickingId, array $qtyByProductId): void
+    {
+        $hasMoveQtyDone = $this->modelHasField('stock.move','quantity_done');
+        $fields = ['id','product_id'];
+        if ($hasMoveQtyDone) { $fields[] = 'quantity_done'; }
+
+        $moves = $this->rpc->callKW('stock.move','search_read', [[['picking_id','=', $pickingId]]], [
+            'fields' => $fields,
+            'limit'  => 2000
+        ]);
+
+        $byProduct = [];
+        foreach ($moves as $m) {
+            $pid = is_array($m['product_id'] ?? null) ? ($m['product_id'][0] ?? null) : ($m['product_id'] ?? null);
+            if ($pid && !isset($byProduct[(int)$pid])) {
+                $byProduct[(int)$pid] = $m;
+            }
+        }
+
+        foreach ($qtyByProductId as $pid => $qty) {
+            $pid = (int)$pid;
+            $qty = (float)$qty;
+            if ($pid <= 0 || !isset($byProduct[$pid])) { continue; }
+            $moveId = (int)$byProduct[$pid]['id'];
+
+            if ($hasMoveQtyDone) {
+                $this->rpc->callKW('stock.move','write', [[$moveId], ['quantity_done' => $qty]]);
+            } else {
+                // fallback legacy
+                $this->rpc->callKW('stock.move','write', [[$moveId], ['product_uom_qty' => $qty]]);
+            }
+        }
+    }
+
+    /** Fixe les quantités “picked” par product_id et valide le picking (wizard inclus) */
+    public function setPickedAndValidatePicking(int $pickingId, array $qtyByProductId): void
+    {
+        // Moves du picking
+        $hasMoveQtyDone = $this->modelHasField('stock.move','quantity_done');
+        $fields = ['id','product_id','product_uom_qty'];
+        if ($hasMoveQtyDone) { $fields[] = 'quantity_done'; }
+
+        $moves = $this->rpc->callKW('stock.move', 'search_read', [[['picking_id', '=', $pickingId]]], [
+            'fields' => $fields,
+            'limit'  => 2000
+        ]);
+
+        // Index par product_id
+        $byProduct = [];
+        foreach ($moves as $m) {
+            $pid = is_array($m['product_id'] ?? null) ? ($m['product_id'][0] ?? null) : ($m['product_id'] ?? null);
+            if ($pid && !isset($byProduct[(int)$pid])) {
+                $byProduct[(int)$pid] = $m;
+            }
+        }
+
+        // Appliquer les quantités
+        foreach ($qtyByProductId as $pid => $qty) {
+            $pid = (int)$pid;
+            $qty = (float)$qty;
+            if ($pid <= 0 || !isset($byProduct[$pid])) { continue; }
+            $moveId = (int)$byProduct[$pid]['id'];
+
+            if ($hasMoveQtyDone) {
+                $this->rpc->callKW('stock.move','write', [[$moveId], ['quantity_done' => $qty]]);
+            } else {
+                // fallback legacy
+                $this->rpc->callKW('stock.move','write', [[$moveId], ['product_uom_qty' => $qty]]);
+            }
+        }
+
+        // Valider
+        $res = $this->rpc->callKW('stock.picking', 'button_validate', [[$pickingId]]);
+
+        // Immediate transfer wizard
+        if (is_array($res) && ($res['res_model'] ?? '') === 'stock.immediate.transfer') {
+            if (!empty($res['res_id'])) {
+                $this->rpc->callKW('stock.immediate.transfer','process', [[$res['res_id']]]);
+            } else {
+                $wizId = $this->rpc->callKW('stock.immediate.transfer','create', [['pick_ids' => [$pickingId]]]);
+                $this->rpc->callKW('stock.immediate.transfer','process', [[$wizId]]);
+            }
+        }
+
+        // Backorder wizard → accepter pour terminer
+        if (is_array($res) && ($res['res_model'] ?? '') === 'stock.backorder.confirmation') {
+            if (!empty($res['res_id'])) {
+                $this->rpc->callKW('stock.backorder.confirmation','process', [[$res['res_id']]]);
+            } else {
+                $ctx = ['active_model' => 'stock.picking', 'active_ids' => [$pickingId], 'active_id' => $pickingId];
+                $wizId = $this->rpc->callKW('stock.backorder.confirmation','create', [[]], ['context' => $ctx]);
+                $this->rpc->callKW('stock.backorder.confirmation','process', [[$wizId]], ['context' => $ctx]);
+            }
+        }
     }
 }
 

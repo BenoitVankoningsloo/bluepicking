@@ -28,15 +28,52 @@
 /* Divers */
 .table th a { text-decoration: none; }
 .filters .form-control, .filters .form-select { max-width: 260px; display: inline-block; }
+
+/* Responsive: filtres et tableau */
+@media (max-width: 992px) {
+  /* Évite les retours à la ligne dans les cellules sur tablette */
+  .table th, .table td { white-space: nowrap; }
+}
+@media (max-width: 768px) {
+  /* Champs filtres plein largeur sur mobile */
+  .filters .form-control, .filters .form-select { max-width: 100%; width: 100%; display: block; }
+  .filters label { display: block; margin-left: 0 !important; }
+}
+/* Empiler et aligner les boutons d’actions sur smartphone */
+@media (max-width: 576px) {
+  .actions-bar { flex-direction: column; align-items: stretch; width: 100%; }
+  .actions-bar .btn { width: 100%; }
+}
+
+/* Filtres: rangée flexible (6 blocs alignés, search plus large) */
+.filters-row { display:flex; flex-wrap: wrap; align-items: end; gap:.5rem .75rem; }
+.filters-row .filter-item { flex: 0 0 auto; }
+.filters-row .filter-item.search { flex: 1 1 420px; min-width: 320px; }
+.filters-row .date-range { display:flex; align-items:center; gap:.35rem; }
+.filters-row .date-range input[type="date"] { min-width: 150px; }
+
+/* Entêtes triables: libellé + flèche à droite, sans retour à la ligne */
+th .sort-head{ white-space: nowrap; display:inline-flex; align-items:center; gap:.25rem; }
+th .sort-head .sort-arrow{ font-size:.9em; opacity:.6; line-height:1; }
+th .sort-head .sort-arrow.active{ opacity:1; font-weight:700; }
 </style>
 
-{# ==== Macro de tri ==== #}
+{# ==== Macro de tri (une seule flèche à droite, bascule asc/desc au clic) ==== #}
 {% macro sort_link(label, col, sort, dir) %}
-  {% set newDir = (sort == col and dir == 'asc') ? 'desc' : 'asc' %}
-  {% set qs = app.request.query.all | merge({'sort': col, 'dir': newDir, 'page': 1}) %}
-  <a href="{{ path(app.request.attributes.get('_route'), qs) }}">{{ label }}
-    {% if sort == col %} {{ dir == 'asc' ? '▲' : '▼' }} {% endif %}
-  </a>
+  {% set baseQs = app.request.query.all | merge({'sort': col, 'page': 1}) %}
+  {% set nextDir = (sort == col and dir == 'asc') ? 'desc' : 'asc' %}
+  {% set toggleQs = baseQs | merge({'dir': nextDir}) %}
+  {% set arrow = '↕' %}
+  {% set arrowClass = 'sort-arrow' %}
+  {% if sort == col %}
+    {% set arrow = (dir == 'asc') ? '▲' : '▼' %}
+    {% set arrowClass = arrowClass ~ ' active' %}
+  {% endif %}
+
+  <span class="sort-head">
+    <a href="{{ path(app.request.attributes.get('_route'), toggleQs) }}">{{ label }}</a>
+    <span class="{{ arrowClass }}" aria-hidden="true">{{ arrow }}</span>
+  </span>
 {% endmacro %}
 {% import _self as self %}
 
@@ -47,55 +84,138 @@
   'error':'Erreur', 'failed':'Échec', 'returned':'Retournée', 'unknown':'—'
 } %}
 
-<div class="container py-4">
-  <h1 class="mb-3">Commandes</h1>
+{# Responsive géré via classes Bootstrap (d-none d-*-table-cell), pas de toggle de vue #}
 
-  {# ==== Filtres ==== #}
-  <form method="get" class="filters mb-3">
-      <label>
-          <input type="text" name="q" class="form-control" placeholder="Rechercher (ID ext., client, email, tracking)" value="{{ q }}">
-      </label>
-      <label>
-          <input type="text" name="status" class="form-control ms-2" placeholder="Statut (draft, sale, done, ...)" value="{{ status }}">
-      </label>
-      <label>
-          <input type="text" name="source" class="form-control ms-2" placeholder="Source (manual, odoo, web)" value="{{ source }}">
-      </label>
-      <label>
-          <input type="date" name="placed_from" class="form-control ms-2" value="{{ placed_from }}">
-      </label>
-      <label>
-          <input type="date" name="placed_to" class="form-control ms-2" value="{{ placed_to }}">
-      </label>
-      <input type="number" name="per_page" class="form-control ms-2" min="5" max="200" value="{{ per_page }}" title="Par page">
-    <button class="btn btn-primary ms-2">Filtrer</button>
-    {% if q or status or source or placed_from or placed_to %}
-      <a class="btn btn-link ms-2" href="{{ path(app.request.attributes.get('_route')) }}">Réinitialiser</a>
-    {% endif %}
+<div class="container">
+  <div class="flash-container"></div>
+
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <h1 class="h3 mb-0">Commandes</h1>
+    <div class="d-flex align-items-center gap-2">
+      <a class="btn btn-sm btn-outline-primary"
+         href="{{ path('admin_orders_export', app.request.query.all) }}">
+        Export CSV
+      </a>
+      <a class="btn btn-sm btn-outline-primary"
+         href="{{ path('admin_orders_export', app.request.query.all | merge({'include_payload': 1})) }}">
+        Export CSV + payload
+      </a>
+    </div>
+  </div>
+
+  {# ==== Toolbar (search centré, style contacts) ==== #}
+  <form method="get"
+        action="{{ path(app.request.attributes.get('_route')) }}"
+        class="admin-toolbar-center d-flex align-items-center justify-content-between gap-2 flex-wrap mb-3">
+    <div class="flex-grow-1 d-flex justify-content-center">
+      <input type="search"
+             id="q"
+             name="q"
+             value="{{ q }}"
+             class="form-control form-control-w-560 form-control-tall"
+             placeholder="Rechercher (ID externe, client, tracking)">
+      {# Conserver les filtres existants lors d’une recherche #}
+      <input type="hidden" name="status"       value="{{ status }}">
+      <input type="hidden" name="source"       value="{{ source }}">
+      <input type="hidden" name="prepared_by"  value="{{ prepared_by|default('') }}">
+      <input type="hidden" name="carrier"      value="{{ carrier }}">
+      <input type="hidden" name="placed_from"  value="{{ placed_from }}">
+      <input type="hidden" name="placed_to"    value="{{ placed_to }}">
+      <input type="hidden" name="sort"         value="{{ sort }}">
+      <input type="hidden" name="dir"          value="{{ dir }}">
+    </div>
+    <div class="ms-0 ms-sm-2">
+      <a class="btn btn-sm btn-outline-secondary" href="{{ path(app.request.attributes.get('_route')) }}">Réinitialiser</a>
+    </div>
   </form>
 
-  {# ==== Compteur + Import Odoo + Exports ==== #}
+  {# ==== Filtres (dropdowns + dates) ==== #}
+  <form method="get" class="filters mb-3">
+    <div class="row g-2">
+      <div class="col-12 col-md-4 col-lg-2">
+        <label class="form-label d-block">Statut</label>
+        <select name="status" class="form-select">
+          <option value="">— Statut —</option>
+          <option value="draft" {{ status == 'draft' ? 'selected' : '' }}>Devis</option>
+          <option value="sent" {{ status == 'sent' ? 'selected' : '' }}>Devis envoyé</option>
+          <option value="sale" {{ status == 'sale' ? 'selected' : '' }}>Confirmée</option>
+          <option value="done" {{ status == 'done' ? 'selected' : '' }}>Terminée</option>
+          <option value="cancel" {{ status == 'cancel' ? 'selected' : '' }}>Annulée</option>
+          <option value="processing" {{ status == 'processing' ? 'selected' : '' }}>En préparation</option>
+          <option value="ready" {{ status == 'ready' ? 'selected' : '' }}>Prête</option>
+          <option value="shipped" {{ status == 'shipped' ? 'selected' : '' }}>Expédiée</option>
+          <option value="delivered" {{ status == 'delivered' ? 'selected' : '' }}>Livrée</option>
+          <option value="error" {{ status == 'error' ? 'selected' : '' }}>Erreur</option>
+          <option value="failed" {{ status == 'failed' ? 'selected' : '' }}>Échec</option>
+          <option value="returned" {{ status == 'returned' ? 'selected' : '' }}>Retournée</option>
+        </select>
+      </div>
+
+      <div class="col-12 col-md-4 col-lg-2">
+        <label class="form-label d-block">Source</label>
+        {% set sources = ['manual','odoo','web'] %}
+        <select name="source" class="form-select">
+          <option value="">— Source —</option>
+          {% for s in sources %}
+            <option value="{{ s }}" {{ source == s ? 'selected' : '' }}>{{ s|capitalize }}</option>
+          {% endfor %}
+          {% if source is not empty and source not in sources %}
+            <option value="{{ source }}" selected>{{ source|capitalize }}</option>
+          {% endif %}
+        </select>
+      </div>
+
+      <div class="col-12 col-md-4 col-lg-2">
+        <label class="form-label d-block">Préparateur</label>
+        <select name="prepared_by" class="form-select">
+          <option value="">— Préparateur —</option>
+          {% for p in preparers %}
+            <option value="{{ p.email }}" {{ prepared_by is defined and prepared_by == p.email ? 'selected' : '' }}>{{ p.label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="col-12 col-md-4 col-lg-2">
+        <label class="form-label d-block">Transporteur</label>
+        <select name="carrier" class="form-select">
+          <option value="">— Transporteur —</option>
+          <option value="bpost" {{ carrier == 'bpost' ? 'selected' : '' }}>Bpost</option>
+          <option value="pickup" {{ carrier == 'pickup' ? 'selected' : '' }}>Pickup</option>
+        </select>
+      </div>
+
+      <div class="col-12 col-md-4 col-lg-2">
+        <label class="form-label d-block">Du (commande)</label>
+        <input type="date" name="placed_from" class="form-control" value="{{ placed_from }}">
+      </div>
+
+      <div class="col-12 col-md-4 col-lg-2">
+        <label class="form-label d-block">Au (commande)</label>
+        <input type="date" name="placed_to" class="form-control" value="{{ placed_to }}">
+      </div>
+    </div>
+
+    <div class="row mt-2">
+      <div class="col-12 d-flex justify-content-start justify-content-md-end">
+        <div>
+          <button class="btn btn-primary me-2">Filtrer</button>
+          {% set hasAny = q or status or source or placed_from or placed_to or prepared_by or carrier %}
+          {% if hasAny %}
+            <a class="btn btn-link" href="{{ path(app.request.attributes.get('_route')) }}">Réinitialiser</a>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </form>
+
+  {# ==== Compteur + Import Odoo (Total) ==== #}
   <div class="d-flex justify-content-between align-items-center mb-2">
     <div><strong>{{ total }}</strong> résultat{{ total>1?'s':'' }}</div>
 
-    <div class="d-flex align-items-center flex-wrap" style="gap:.5rem;">
-      {# Import Odoo (ref vide => batch 30 jours) #}
-      <form method="post" action="{{ path('admin_odoo_import_by_ref') }}" class="d-flex align-items-center">
-        <input type="hidden" name="_token" value="{{ csrf_token('odoo_import') }}">
-          <label>
-              <input type="text" name="ref" class="form-control form-control-sm d-inline-block" style="width:220px"
-                     placeholder="Réf Odoo (ex. S00042) — vide = batch">
-          </label>
-          <button class="btn btn-outline-primary btn-sm ms-1">Importer depuis Odoo</button>
-      </form>
-
-      <a class="btn btn-outline-secondary btn-sm"
-         href="{{ path('admin_orders_export', app.request.query.all) }}">
-         Exporter CSV
-      </a>
-      <a class="btn btn-outline-secondary btn-sm"
-         href="{{ path('admin_orders_export', app.request.query.all | merge({'include_payload': 1})) }}">
-         Exporter CSV + payload
+    <div class="actions-bar d-flex align-items-center flex-wrap" style="gap:.5rem;">
+      <a class="btn btn-outline-primary btn-sm"
+         href="{{ path('admin_odoo_import_by_ref', {'since':'all'}) }}">
+         Importer Odoo (Total)
       </a>
     </div>
   </div>
@@ -107,13 +227,13 @@
           <th>{{ self.sort_link('ID externe', 'external_order_id', sort, dir) }}</th>
           <th>{{ self.sort_link('Statut', 'status', sort, dir) }}</th>
           <th>{{ self.sort_link('Client', 'customer_name', sort, dir) }}</th>
-          <th class="text-end">{{ self.sort_link('Montant', 'total_amount', sort, dir) }}</th>
-          <th class="text-end">{{ self.sort_link('Articles', 'item_count', sort, dir) }}</th>
-          <th>{{ self.sort_link('Source', 'source', sort, dir) }}</th>
-          <th>Transport</th>
-          <th>Tracking</th>
-          <th>{{ self.sort_link('Passée le', 'placed_at', sort, dir) }}</th>
-          <th>{{ self.sort_link('Maj', 'updated_at', sort, dir) }}</th>
+          <th class="d-none d-lg-table-cell">{{ self.sort_link('Préparateur', 'prepared_by', sort, dir) }}</th>
+          {# Articles supprimé #}
+          <th class="d-none d-lg-table-cell">{{ self.sort_link('Source', 'source', sort, dir) }}</th>
+          <th class="d-none d-lg-table-cell">{{ self.sort_link('Transport', 'shipping_carrier', sort, dir) }}</th>
+          <th class="d-none d-lg-table-cell">{{ self.sort_link('Tracking', 'tracking_number', sort, dir) }}</th>
+          <th class="d-none d-md-table-cell">{{ self.sort_link('Passée le', 'placed_at', sort, dir) }}</th>
+          <th class="d-none d-lg-table-cell">{{ self.sort_link('Maj', 'updated_at', sort, dir) }}</th>
           <th>Actions</th>
         </tr>
       </thead>
@@ -138,41 +258,30 @@
 
           <td>
             {{ o.customer_name }}
-            {% if o.customer_email %}<div class="text-muted small">{{ o.customer_email }}</div>{% endif %}
           </td>
-          <td class="text-end">
-            {% if o.total_amount is not null %}
-              {{ o.total_amount|number_format(2, ',', ' ') }} {{ o.currency ?: '' }}
-            {% else %}
-              —
-            {% endif %}
+          <td class="d-none d-lg-table-cell">
+            {{ o.prepared_by_label ?? '' }}
           </td>
-          <td class="text-end">{{ o.item_count }}</td>
-          <td>{{ o.source }}</td>
-          <td>
+          <td class="text-end d-none d-lg-table-cell">{{ o.item_count }}</td>
+          <td class="d-none d-lg-table-cell">{{ o.source }}</td>
+          <td class="d-none d-lg-table-cell">
             {% set parts = [] %}
             {% if o.shipping_carrier %}{% set parts = parts|merge([o.shipping_carrier]) %}{% endif %}
             {% if o.shipping_service %}{% set parts = parts|merge([o.shipping_service]) %}{% endif %}
             {{ parts|join(' · ') }}
           </td>
-          <td>{{ o.tracking_number }}</td>
-          <td>{{ o.placed_at ? o.placed_at|date('Y-m-d H:i') : '' }}</td>
-          <td>{{ o.updated_at ? o.updated_at|date('Y-m-d H:i') : '' }}</td>
+          <td class="d-none d-lg-table-cell">{{ o.tracking_number }}</td>
+          <td class="d-none d-md-table-cell">{{ o.placed_at ? o.placed_at|date('Y-m-d H:i') : '' }}</td>
+          <td class="d-none d-lg-table-cell">{{ o.updated_at ? o.updated_at|date('Y-m-d H:i') : '' }}</td>
           <td>
             <div class="btn-group btn-group-sm" role="group">
-              <a class="btn btn-secondary" title="PDF Picking A4"
-                 href="{{ path('admin_orders_picking_pdf', {'id': o.id}) }}">PDF Picking</a>
-              <a class="btn btn-secondary" title="PDF Bon de livraison A4"
-                 href="{{ path('admin_orders_delivery_pdf', {'id': o.id}) }}">PDF BL</a>
-              <a class="btn btn-secondary" title="PDF Étiquettes A5"
-                 href="{{ path('admin_orders_labels_pdf', {'id': o.id}) }}">PDF Labels</a>
               <a class="btn btn-outline-primary"  title="Traitement"
                  href="{{ path('admin_orders_process', {'id': o.id}) }}">Traiter</a>
             </div>
           </td>
         </tr>
       {% else %}
-        <tr><td colspan="11" class="text-center text-muted">Aucune commande.</td></tr>
+        <tr><td colspan="10" class="text-center text-muted">Aucune commande.</td></tr>
       {% endfor %}
       </tbody>
     </table>

@@ -27,19 +27,27 @@
             <li class="nav-item"><a class="nav-link" href="{{ path('home') }}">Accueil</a></li>
             <li class="nav-item"><a class="nav-link" href="{{ path('app_contact') }}">Contact</a></li>
             {% if is_granted('ROLE_ADMIN') %}
-              <li class="nav-item"><a class="nav-link" href="{{ path('admin_users') }}">Admin · Users</a></li>
-              <li class="nav-item"><a class="nav-link" href="{{ path('admin_contacts') }}">Admin · Contacts</a></li>
+              <li class="nav-item"><a class="nav-link" href="{{ path('admin_users') }}">Gestion des utilisateurs</a></li>
+              <li class="nav-item"><a class="nav-link" href="{{ path('admin_contacts') }}">Messages reçus</a></li>
+              <li class="nav-item"><a class="nav-link" href="{{ path('admin_deliveries_list') }}">Ordres de livraison</a></li>
               {% include '_partials/admin_nav_items.html.twig' %}
             {% endif %}
           </ul>
 
           <ul class="navbar-nav ms-auto">
             {% if app.user %}
-              <li class="nav-item d-flex align-items-center me-2 text-muted small">
-                {{ app.user.name ?? app.user.email }}
+              <li class="nav-item dropdown">
+                <a class="nav-link dropdown-toggle" href="#" id="accountDropdown" role="button"
+                   data-bs-toggle="dropdown" aria-expanded="false">
+                  Mon compte
+                </a>
+                <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="accountDropdown">
+                  <li class="dropdown-header">{{ app.user.name ?? app.user.email }}</li>
+                  <li><a class="dropdown-item" href="{{ path('app_account') }}">Mon compte</a></li>
+                  <li><hr class="dropdown-divider"></li>
+                  <li><a class="dropdown-item" href="{{ path('app_logout') }}">Déconnexion</a></li>
+                </ul>
               </li>
-              <li class="nav-item"><a class="nav-link" href="{{ path('app_account') }}">Mon compte</a></li>
-              <li class="nav-item"><a class="nav-link" href="{{ path('app_logout') }}">Déconnexion</a></li>
             {% else %}
               <li class="nav-item"><a class="nav-link" href="{{ path('app_login') }}">Connexion</a></li>
               <li class="nav-item"><a class="nav-link" href="{{ path('app_register') }}">Inscription</a></li>

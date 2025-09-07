@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Page introuvable — {{ status_code|default(404) }}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #111827;
+      --text: #e5e7eb;
+      --muted: #9ca3af;
+      --accent: #64b5f6;
+      --accent-2: #8b5cf6;
+      --btn-bg: #1f2937;
+      --btn-hover: #374151;
+      --shadow: 0 20px 50px rgba(0,0,0,.45);
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      height: 100%;
+      margin: 0;
+      background: radial-gradient(1200px 600px at 10% -10%, rgba(139,92,246,.15), transparent 60%),
+                  radial-gradient(900px 500px at 120% 120%, rgba(100,181,246,.2), transparent 60%),
+                  var(--bg);
+      color: var(--text);
+      font: 16px/1.6 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji";
+    }
+    .wrap {
+      min-height: 100%;
+      display: grid;
+      place-items: center;
+      padding: 40px 16px;
+    }
+    .card {
+      width: 100%;
+      max-width: 720px;
+      background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .hero {
+      position: relative;
+      padding: 36px 28px 8px;
+      background:
+        radial-gradient(900px 220px at 0% 0%, rgba(139,92,246,.18), transparent 60%),
+        radial-gradient(900px 220px at 100% 0%, rgba(100,181,246,.18), transparent 60%),
+        linear-gradient(180deg, rgba(255,255,255,.04), transparent);
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: .6ch;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(17,24,39,.7);
+      border: 1px solid rgba(255,255,255,.08);
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: .02em;
+      backdrop-filter: blur(6px);
+    }
+    .code {
+      font-weight: 700;
+      color: #fca5a5;
+    }
+    h1 {
+      margin: 14px 0 8px;
+      font-size: clamp(28px, 4vw, 40px);
+      line-height: 1.15;
+      letter-spacing: 0.2px;
+    }
+    .subtitle {
+      margin: 0 0 18px;
+      color: var(--muted);
+      font-size: 15px;
+    }
+    .content {
+      padding: 0 28px 28px;
+      display: grid;
+      gap: 18px;
+    }
+    .cta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 6px;
+    }
+    .btn, .link {
+      appearance: none;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: .6ch;
+      padding: 10px 14px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,.08);
+      color: var(--text);
+      background: var(--btn-bg);
+      transition: background .15s ease, transform .06s ease;
+      cursor: pointer;
+      user-select: none;
+      font-weight: 600;
+      font-size: 14px;
+    }
+    .btn:hover { background: var(--btn-hover); }
+    .btn:active { transform: translateY(1px); }
+    .btn.primary {
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      border-color: rgba(255,255,255,.18);
+    }
+    .btn.primary:hover { filter: brightness(1.05); }
+    .tips {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .footer {
+      padding: 14px 20px;
+      border-top: 1px solid rgba(255,255,255,.06);
+      color: var(--muted);
+      font-size: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: rgba(17,24,39,.5);
+    }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg: #f3f4f6;
+        --panel: #ffffff;
+        --text: #111827;
+        --muted: #6b7280;
+        --btn-bg: #f8fafc;
+        --btn-hover: #eef2f7;
+      }
+      .card { border-color: rgba(0,0,0,.06); }
+      .footer { border-top-color: rgba(0,0,0,.06); }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <article class="card" role="alert" aria-live="polite">
+      <header class="hero">
+        <span class="badge" aria-label="Erreur HTTP">
+          <span class="mono code">{{ status_code|default(404) }}</span>
+          <span>Page introuvable</span>
+        </span>
+        <h1>Oups… Cette page n’existe pas ou a été déplacée.</h1>
+        <p class="subtitle">
+          {{ status_text|default('La ressource demandée est introuvable.') }}
+        </p>
+      </header>
+
+      <div class="content">
+        <div class="cta">
+          <a class="btn primary" href="/" rel="home" aria-label="Retour à l’accueil">
+            ⟵ Retour à l’accueil
+          </a>
+          <button class="btn" type="button" onclick="history.back()" aria-label="Revenir à la page précédente">
+            ◀ Revenir en arrière
+          </button>
+        </div>
+        <p class="tips">
+          • Vérifiez l’URL saisie • Essayez depuis la page d’accueil • Si le problème persiste, réessayez plus tard.
+        </p>
+      </div>
+
+      <footer class="footer">
+        <span>Erreur <span class="mono">{{ status_code|default(404) }}</span></span>
+        <span>Powered by Symfony</span>
+      </footer>
+    </article>
+  </div>
+</body>
+</html>

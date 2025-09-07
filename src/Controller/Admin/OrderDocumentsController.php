@@ -41,7 +41,9 @@ final class OrderDocumentsController extends AbstractController
     #[Route('/admin/orders/{id<\d+>}/picking.pdf', name: 'admin_orders_picking_pdf', methods: ['GET'])]
     public function pickingPdf(int $id): Response
     {
-        $this->denyAccessUnlessGranted('ROLE_ADMIN');
+        if (!$this->isGranted('ROLE_ADMIN') && !$this->isGranted('ROLE_PREPARATEUR')) {
+            throw $this->createAccessDeniedException();
+        }
         $html = $this->renderView('admin/orders/pdf/picking.html.twig', $this->loadOrderFull($id));
         return $this->pdf->render($html, 'picking_'.$id.'_'.date('Ymd_His').'.pdf');
     }
@@ -49,7 +51,9 @@ final class OrderDocumentsController extends AbstractController
     #[Route('/admin/orders/{id<\d+>}/delivery-note.pdf', name: 'admin_orders_delivery_pdf', methods: ['GET'])]
     public function deliveryPdf(int $id): Response
     {
-        $this->denyAccessUnlessGranted('ROLE_ADMIN');
+        if (!$this->isGranted('ROLE_ADMIN') && !$this->isGranted('ROLE_PREPARATEUR')) {
+            throw $this->createAccessDeniedException();
+        }
         $html = $this->renderView('admin/orders/pdf/delivery.html.twig', $this->loadOrderFull($id));
         return $this->pdf->render($html, 'delivery_'.$id.'_'.date('Ymd_His').'.pdf');
     }
@@ -57,7 +61,9 @@ final class OrderDocumentsController extends AbstractController
     #[Route('/admin/orders/{id<\d+>}/labels.pdf', name: 'admin_orders_labels_pdf', methods: ['GET'])]
     public function labelsPdf(int $id): Response
     {
-        $this->denyAccessUnlessGranted('ROLE_ADMIN');
+        if (!$this->isGranted('ROLE_ADMIN') && !$this->isGranted('ROLE_PREPARATEUR')) {
+            throw $this->createAccessDeniedException();
+        }
         $html = $this->renderView('admin/orders/pdf/labels.html.twig', $this->loadOrderFull($id));
         return $this->pdf->render($html, 'labels_'.$id.'_'.date('Ymd_His').'.pdf', paper: 'A5');
     }
@@ -66,7 +72,9 @@ final class OrderDocumentsController extends AbstractController
     #[Route('/admin/orders/{id<\d+>}/labels.zpl', name: 'admin_orders_labels_zpl', methods: ['GET'])]
     public function labelsZpl(int $id): Response
     {
-        $this->denyAccessUnlessGranted('ROLE_ADMIN');
+        if (!$this->isGranted('ROLE_ADMIN') && !$this->isGranted('ROLE_PREPARATEUR')) {
+            throw $this->createAccessDeniedException();
+        }
         $data = $this->loadOrderFull($id);
         $meta = $data['meta']; $o = $data['o'];
 

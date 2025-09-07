@@ -5,12 +5,14 @@ declare(strict_types=1);
 namespace App\Service;
 
 use Doctrine\DBAL\Connection;
+use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 final class OdooSyncService
 {
     public function __construct(
         private readonly Connection $db,
-        private readonly OdooSalesService $sales
+        private readonly OdooSalesService $sales,
+        private readonly HttpClientInterface $http,
     ) {}
 
     public function upsertFromOdooPayload(array $data): int
@@ -129,5 +131,133 @@ final class OdooSyncService
     }
     return ['imported' => $count, 'last_ref' => $lastRef, 'errors' => $errors];
     }
+
+        /**
+         * Synchronise les ordres de livraison (stock.picking) depuis Odoo
+         * vers la table locale odoo_pickings (redondance BD).
+         * Filtre par états et période sur scheduled_date.
+         */
+        public function syncPickings(array $states, ?string $since = null, ?string $until = null, int $limit = 500, int $offset = 0): array
+        {
+            $this->ensurePickingsTable();
+
+            $domain = [];
+            if ($states) { $domain[] = ['state', 'in', array_values($states)]; }
+            // On cible les mouvements sortants (livraisons)
+            $domain[] = ['picking_type_code', '=', 'outgoing'];
+            if ($since) { $domain[] = ['scheduled_date', '>=', $since . ' 00:00:00']; }
+            if ($until) { $domain[] = ['scheduled_date', '<=', $until . ' 23:59:59']; }
+
+            $fields = ['name','origin','partner_id','scheduled_date','state','write_date'];
+            $rows = $this->sales->listPickings($domain, $limit, $offset, $fields);
+            if (!is_array($rows)) {
+                throw new \RuntimeException('Odoo: réponse inattendue pour stock.picking');
+            }
+
+            $this->db->beginTransaction();
+            try {
+                foreach ($rows as $r) {
+                    $odooId   = (int)($r['id'] ?? 0);
+                    $name     = (string)($r['name'] ?? '');
+                    $origin   = (string)($r['origin'] ?? '');
+                    $state    = (string)($r['state'] ?? '');
+                    $schedRaw = (string)($r['scheduled_date'] ?? '');
+                    $scheduled= $schedRaw !== '' ? $schedRaw : null;
+                    $writeRaw = (string)($r['write_date'] ?? '');
+                    $updated  = $writeRaw !== '' ? $writeRaw : null;
+
+                    $partnerId   = null;
+                    $partnerName = null;
+                    if (isset($r['partner_id'])) {
+                        if (is_array($r['partner_id'])) {
+                            $partnerId   = isset($r['partner_id'][0]) ? (int)$r['partner_id'][0] : null;
+                            $partnerName = isset($r['partner_id'][1]) ? (string)$r['partner_id'][1] : null;
+                        } elseif (is_int($r['partner_id'])) {
+                            $partnerId = (int)$r['partner_id'];
+                        }
+                    }
+
+                    $payload = json_encode($r, JSON_UNESCAPED_UNICODE);
+
+                    // UPDATE d’abord
+                    $affected = $this->db->executeStatement(
+                        'UPDATE odoo_pickings
+                            SET name = ?, origin = ?, partner_id = ?, partner_name = ?, scheduled_date = ?, state = ?, updated_at = ?, payload_json = ?
+                          WHERE odoo_id = ?',
+                        [$name, $origin, $partnerId, $partnerName, $scheduled, $state, $updated, $payload, $odooId]
+                    );
+
+                    // Si aucune ligne modifiée, n'insérer QUE si la ligne n'existe pas (évite duplicate key)
+                    if ($affected === 0) {
+                        $exists = $this->db->fetchOne('SELECT 1 FROM odoo_pickings WHERE odoo_id = ?', [$odooId]);
+                        if (!$exists) {
+                            $this->db->executeStatement(
+                                'INSERT INTO odoo_pickings
+                                    (odoo_id, name, origin, partner_id, partner_name, scheduled_date, state, updated_at, payload_json)
+                                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                                [$odooId, $name, $origin, $partnerId, $partnerName, $scheduled, $state, $updated, $payload]
+                            );
+                        }
+                    }
+                }
+                $this->db->commit();
+            } catch (\Throwable $e) {
+                $this->db->rollBack();
+                throw $e;
+            }
+
+            return ['imported' => count($rows)];
+        }
+
+        /** Alias simple pour synchroniser les pickings (appel dynamique) */
+        public function pickings(array $states = [], ?string $since = null, ?string $until = null, int $limit = 500, int $offset = 0): array
+        {
+            return $this->syncPickings($states, $since, $until, $limit, $offset);
+        }
+
+        /** Création portable de la table odoo_pickings (SQLite/MySQL) + index */
+        private function ensurePickingsTable(): void
+        {
+            try {
+                // Variante SQLite (AUTOINCREMENT/INTEGER PRIMARY KEY)
+                $this->db->executeStatement(
+                    'CREATE TABLE IF NOT EXISTS odoo_pickings (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        odoo_id INTEGER UNIQUE,
+                        name VARCHAR(64) NOT NULL,
+                        origin VARCHAR(128) NULL,
+                        partner_id INTEGER NULL,
+                        partner_name VARCHAR(255) NULL,
+                        scheduled_date DATETIME NULL,
+                        state VARCHAR(32) NOT NULL,
+                        updated_at DATETIME NULL,
+                        payload_json TEXT NULL
+                     )'
+                );
+            } catch (\Throwable) {
+                // Variante MySQL
+                $this->db->executeStatement(
+                    'CREATE TABLE IF NOT EXISTS odoo_pickings (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        odoo_id INT UNIQUE,
+                        name VARCHAR(64) NOT NULL,
+                        origin VARCHAR(128) NULL,
+                        partner_id INT NULL,
+                        partner_name VARCHAR(255) NULL,
+                        scheduled_date DATETIME NULL,
+                        state VARCHAR(32) NOT NULL,
+                        updated_at DATETIME NULL,
+                        payload_json LONGTEXT NULL
+                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'
+                );
+            }
+
+            // Index non bloquants
+            try { $this->db->executeStatement('CREATE INDEX IF NOT EXISTS idx_pickings_state ON odoo_pickings(state)'); } catch (\Throwable) {}
+            try { $this->db->executeStatement('CREATE INDEX IF NOT EXISTS idx_pickings_sched ON odoo_pickings(scheduled_date)'); } catch (\Throwable) {}
+            try { $this->db->executeStatement('CREATE INDEX IF NOT EXISTS idx_pickings_partner ON odoo_pickings(partner_id)'); } catch (\Throwable) {}
+        }
+
+
 }
 

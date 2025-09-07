@@ -2,7 +2,7 @@
 {% block title %}Traitement commande {{ o.external_order_id ?? o.id }}{% endblock %}
 
 {% block body %}
-<!--suppress ALL, HtmlFormInputWithoutLabel -->mlFormInputWithoutLabel -->mlFormInputWithoutLabel -->mlFormInputWithoutLabel -->mlFormInputWithoutLabel -->mlFormInputWithoutLabel -->mlFormInputWithoutLabel -->mlFormInputWithoutLabel -->mlFormInputWithoutLabel -->mlFormInputWithoutLabel -->mlFormInputWithoutLabel -->mlFormInputWithoutLabel -->mlFormInputWithoutLabel -->mlFormInputWithoutLabel -->
+<!-- suppress HtmlFormInputWithoutLabel -->
 
 
 
@@ -18,9 +18,17 @@
 
     <div class="container py-4">
   <a class="btn btn-link" href="{{ path('admin_orders_show', {'id': o.id}) }}">← Retour fiche</a>
-  <h1 class="h4 mb-1">Traitement commande</h1>
+  <h1 class="h4 mb-1">Traitement commande {{ o.external_order_id|default(o.id) }}</h1>
   {% if odoo_state %}
     <div class="mb-3 text-muted small">État Odoo : <strong>{{ odoo_state }}</strong></div>
+  {% endif %}
+  {% if pickings is defined and pickings %}
+    <div class="mb-3 text-muted small">
+      Ordres de préparation :
+      {% for p in pickings %}
+        <a href="{{ path('admin_delivery_show', {id: p.odoo_id}) }}"><code>{{ p.name }}</code></a>{% if not loop.last %}, {% endif %}
+      {% endfor %}
+    </div>
   {% endif %}
 
   {% set locked = meta.picking_validated_at is defined and meta.picking_validated_at is not null %}
@@ -29,14 +37,14 @@
   {% set disableConfirm = locked or isConfirmed or isCanceled %}
   {% set disableCancel  = locked or isCanceled %}
 
+  {% set pickingState = picking ? (picking.picking.state|default('')) : '' %}
+  {% set pickingClosed = pickingState in ['done','cancel'] %}
+  {% set disablePrep = locked or pickingClosed %}
+
   <div class="mb-3 d-flex flex-wrap align-items-center gap-2">
     <form method="post" action="{{ path('admin_odoo_confirm_order', {'id': o.id}) }}" class="d-inline">
       <input type="hidden" name="_token" value="{{ csrf_token('odoo_confirm_' ~ o.id) }}">
       <button class="btn btn-success btn-sm" {{ disableConfirm ? 'disabled' : '' }}>Confirmer (Odoo)</button>
-    </form>
-    <form method="post" action="{{ path('admin_odoo_cancel_order', {'id': o.id}) }}" class="d-inline">
-      <input type="hidden" name="_token" value="{{ csrf_token('odoo_cancel_' ~ o.id) }}">
-      <button class="btn btn-outline-danger btn-sm" {{ disableCancel ? 'disabled' : '' }}>Annuler (Odoo)</button>
     </form>
     <form method="post" action="{{ path('admin_odoo_refresh_lines', {'id': o.id}) }}" class="d-inline">
       <input type="hidden" name="_token" value="{{ csrf_token('odoo_refresh_' ~ o.id) }}">
@@ -46,10 +54,10 @@
       <input type="hidden" name="_token" value="{{ csrf_token('bpost_generate_' ~ o.id) }}">
       <button class="btn btn-success btn-sm" {{ locked ? 'disabled' : '' }}>Générer via bpost</button>
     </form>
-    <a class="btn btn-outline-secondary btn-sm" href="{{ path('admin_orders_picking_pdf', {'id': o.id}) }}">PDF Picking</a>
-    <a class="btn btn-outline-secondary btn-sm" href="{{ path('admin_orders_delivery_pdf', {'id': o.id}) }}">PDF BL</a>
-    <a class="btn btn-outline-secondary btn-sm" href="{{ path('admin_orders_labels_pdf', {'id': o.id}) }}">PDF Labels</a>
-    <a class="btn btn-outline-primary btn-sm" href="{{ path('admin_orders_carrier_label_pdf', {'id': o.id}) }}"> Étiquette Bpost (PDF)</a>
+    <a class="btn btn-outline-secondary btn-sm" href="{{ path('admin_orders_picking_pdf', {'id': o.id}) }}" target="_blank" rel="noopener noreferrer">PDF Picking</a>
+    <a class="btn btn-outline-secondary btn-sm" href="{{ path('admin_orders_delivery_pdf', {'id': o.id}) }}" target="_blank" rel="noopener noreferrer">PDF BL</a>
+    <a class="btn btn-outline-secondary btn-sm" href="{{ path('admin_orders_labels_pdf', {'id': o.id}) }}" target="_blank" rel="noopener noreferrer">PDF Labels</a>
+    <a class="btn btn-outline-primary btn-sm" href="{{ path('admin_orders_carrier_label_pdf', {'id': o.id}) }}" target="_blank" rel="noopener noreferrer"> Étiquette Bpost (PDF)</a>
     <button type="submit" class="btn btn-primary btn-sm ms-auto"
             form="push-form" {{ locked ? 'disabled' : '' }}>
       Valider le bon de livraison (Odoo)
@@ -67,21 +75,24 @@
     <div class="row g-3">
       <div class="col-md-3">
         <label class="form-label">Nombre de colis</label>
-        <input type="number" min="1" class="form-control" name="parcels_count" value="{{ meta.parcels_count ?? 1 }}" {{ locked ? 'disabled' : '' }}>
+        <input type="number" min="1" class="form-control" name="parcels_count" value="{{ meta.parcels_count|default(1) }}" {{ locked ? 'disabled' : '' }}>
       </div>
       <div class="col-md-3">
         <label class="form-label">Réf colis</label>
-        <input type="text" class="form-control" name="package_ref" value="{{ meta.package_ref }}" {{ locked ? 'disabled' : '' }}>
+        <input type="text" class="form-control" name="package_ref" value="{{ meta.package_ref|default('') }}" {{ locked ? 'disabled' : '' }}>
       </div>
       <div class="col-md-6">
         <label class="form-label">Préparateur</label>
         <select class="form-select" name="prepared_by" {{ locked ? 'disabled' : '' }}>
-          {% set current = meta.prepared_by ?? app.user.userIdentifier %}
+          {% set current = meta.prepared_by|default(app.user.userIdentifier) %}
+          {% set hasCurrent = false %}
           {% for u in users %}
-            {% set label = u.label %}
-            <option value="{{ label }}" {{ label == current ? 'selected' : '' }}>{{ label }}</option>
+            {% set value = u.value is defined and u.value is not null ? u.value : (u.label is defined ? u.label : '') %}
+            {% set label = u.label is defined ? u.label : value %}
+            <option value="{{ value }}" {{ value == current ? 'selected' : '' }}>{{ label }}</option>
+            {% if value == current %}{% set hasCurrent = true %}{% endif %}
           {% endfor %}
-          {% if users is empty %}
+          {% if users is empty or (not hasCurrent and current) %}
             <option value="{{ current }}" selected>{{ current }}</option>
           {% endif %}
         </select>
@@ -89,7 +100,7 @@
 
       <div class="col-md-4">
         <label class="form-label">Transporteur</label>
-        {% set carrier = o.shipping_carrier ?? meta.shipping_carrier_override ?? '' %}
+        {% set carrier = o.shipping_carrier|default(meta.shipping_carrier_override|default('')) %}
         <select name="shipping_carrier" class="form-select" {{ locked ? 'disabled' : '' }}>
           <option value="" {{ carrier=='' ? 'selected' : '' }}>—</option>
           <option value="bpost" {{ carrier=='bpost' ? 'selected' : '' }}>Bpost</option>
@@ -98,7 +109,7 @@
       </div>
       <div class="col-md-4">
         <label class="form-label">Service</label>
-        <input type="text" class="form-control" name="shipping_service" value="{{ o.shipping_service ?? meta.shipping_service_override }}" {{ locked ? 'disabled' : '' }}>
+        <input type="text" class="form-control" name="shipping_service" value="{{ o.shipping_service|default(meta.shipping_service_override|default('')) }}" {{ locked ? 'disabled' : '' }}>
       </div>
       <div class="col-md-4">
         <label class="form-label">Tracking</label>
@@ -149,39 +160,92 @@
   <hr class="my-4">
   <h2 class="h6">Produits à préparer</h2>
 
+  {% set hasPicking = picking is not null %}
+  {% if hasPicking %}
+    <div class="mb-2 text-muted small">
+      Picking: <strong>{{ picking.picking.name ?? ('#' ~ picking.picking.id) }}</strong>
+      · État: {{ picking.picking.state ?? 'n/a' }}
+      · Prévu: {{ picking.picking.scheduled_date ?? 'n/a' }}
+    </div>
+  {% endif %}
+
   <form id="push-form" method="post" action="{{ path('admin_odoo_push_validate', {'id': o.id}) }}">
     <input type="hidden" name="_token" value="{{ csrf_token('odoo_pushval_' ~ o.id) }}">
     <div class="table-responsive">
       <table class="table table-sm align-middle">
         <thead>
           <tr>
-            <th style="width:20%;">SKU</th>
+            <th style="width:14%;">BL</th>
+            <th style="width:10%;">État</th>
+            <th style="width:16%;">SKU</th>
             <th>Nom</th>
-            <th class="text-end" style="width:10%;">Qté commandée</th>
-            <th class="text-end" style="width:12%;">Stock Odoo</th>
+            <th class="text-end" style="width:10%;">Demandé (SO)</th>
+            <th class="text-end" style="width:10%;">Demandé (Move)</th>
+            <th class="text-center" style="width:8%;">Picked ?</th>
+            <th class="text-end" style="width:10%;">Forecast</th>
+            <th class="text-end" style="width:10%;">On hand</th>
             <th class="text-end" style="width:14%;">Qté préparée</th>
           </tr>
         </thead>
         <tbody>
         {% for l in lines %}
+          {% set pid = l.odoo_product_id|default(null) %}
+          {% set p = (pid and picking_lines_by_pid[pid] is defined) ? picking_lines_by_pid[pid] : null %}
+          {% set pkList = (pid and product_pickings is defined and product_pickings[pid] is defined) ? product_pickings[pid] : [] %}
           <tr>
+            <td>
+              {% if pkList %}
+                {% for pk in pkList %}
+                  <a href="{{ path('admin_delivery_show', {id: pk.id}) }}"><code>{{ pk.name }}</code></a>{% if not loop.last %}, {% endif %}
+                {% endfor %}
+              {% else %}—{% endif %}
+            </td>
+            <td>
+              {% if pkList %}
+                {% for pk in pkList %}
+                  {{ pk.state|default('—') }}{% if not loop.last %}, {% endif %}
+                {% endfor %}
+              {% else %}—{% endif %}
+            </td>
             <td><code>{{ l.sku }}</code></td>
-            <td>{{ l.name }}</td>
-            <td class="text-end">{{ l.qty }}</td>
-            <td class="text-end">{{ l.odoo_qty_available is not null ? l.odoo_qty_available : '—' }}</td>
+            <td>
+              {{ l.name }}
+              {% if p and p.product_uom %}<div class="text-muted small">{{ p.product_uom }}</div>{% endif %}
+            </td>
+            <td class="text-end">{{ p and p.ordered_qty is not null ? p.ordered_qty : '—' }}</td>
+            <td class="text-end">{{ p ? p.product_uom_qty : '—' }}</td>
+            <td class="text-center">
+              {% if p %}<input type="checkbox" disabled {{ p.picked ? 'checked' : '' }}>{% else %}—{% endif %}
+            </td>
+            <td class="text-end">{{ p ? p.forecast : '—' }}</td>
+            <td class="text-end">{{ p ? p.on_hand : '—' }}</td>
             <td class="text-end" style="min-width:120px;">
               <input type="number" step="0.01" min="0" name="prepared[{{ l.id }}]"
-                     value="{{ l.prepared_qty is not null ? l.prepared_qty : '' }}"
-                     class="form-control form-control-sm text-end" {{ locked ? 'disabled' : '' }}>
+                     value="{{ l.prepared_qty is not null ? l.prepared_qty : (p ? (p.picked_qty > 0 ? p.picked_qty : p.product_uom_qty) : '') }}"
+                     class="form-control form-control-sm text-end" {{ disablePrep ? 'disabled' : '' }}>
             </td>
           </tr>
         {% else %}
-          <tr><td colspan="5" class="text-center text-muted">Aucune ligne.</td></tr>
+          <tr><td colspan="8" class="text-center text-muted">Aucune ligne.</td></tr>
         {% endfor %}
         </tbody>
       </table>
     </div>
   </form>
+
+  <div class="d-flex gap-2">
+    <button type="submit"
+            class="btn btn-outline-secondary btn-sm"
+            form="push-form"
+            formaction="{{ path('admin_orders_save_prep', {'id': o.id}) }}"
+            {{ disablePrep ? 'disabled' : '' }}>
+      Enregistrer la préparation
+    </button>
+    <button type="submit" class="btn btn-primary btn-sm"
+            form="push-form" {{ disablePrep ? 'disabled' : '' }}>
+      Valider la préparation (Odoo)
+    </button>
+  </div>
 </div>
 {% endblock %}
 

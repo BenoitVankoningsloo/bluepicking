@@ -20,13 +20,24 @@ final class OrderListController extends AbstractController
     #[Route('/admin/orders', name: 'admin_orders_list', methods: ['GET'])]
     public function __invoke(Request $request): Response
     {
-        $this->denyAccessUnlessGranted('ROLE_ADMIN');
+        if (!$this->isGranted('ROLE_ADMIN') && !$this->isGranted('ROLE_PREPARATEUR')) {
+            throw $this->createAccessDeniedException();
+        }
 
         $q        = trim((string) $request->query->get('q', ''));
         $status   = trim((string) $request->query->get('status', ''));
         $source   = trim((string) $request->query->get('source', ''));
         $from     = trim((string) $request->query->get('placed_from', '')); // YYYY-MM-DD
         $to       = trim((string) $request->query->get('placed_to', ''));   // YYYY-MM-DD
+
+        // Nouveaux filtres
+        $preparedBy = trim((string) $request->query->get('prepared_by', '')); // email préparateur
+        $carrier    = trim((string) $request->query->get('carrier', ''));     // shipping_carrier
+        $tracking   = trim((string) $request->query->get('tracking', ''));    // tracking_number (LIKE)
+
+        // Vue: 'full' (complète) ou 'tablet' (simplifiée)
+        $view = (string) $request->query->get('view', 'full');
+        $view = \in_array($view, ['full','tablet'], true) ? $view : 'full';
 
         $page     = max(1, (int) $request->query->get('page', 1));
         $perPage  = (int) $request->query->get('per_page', 25);
@@ -39,15 +50,21 @@ final class OrderListController extends AbstractController
             'external_order_id' => 'o.external_order_id',
             'status'            => 'o.status',
             'customer_name'     => 'o.customer_name',
+            // 'total_amount' retiré de l’UI mais conservé si jamais utilisé ailleurs
             'total_amount'      => 'o.total_amount',
             'item_count'        => 'o.item_count',
             'source'            => 'o.source',
+            'shipping_carrier'  => 'o.shipping_carrier',
+            'tracking_number'   => 'o.tracking_number',
+            'prepared_by'       => 'm.prepared_by',
             'placed_at'         => 'o.placed_at',
             'updated_at'        => 'o.updated_at',
         ];
         $orderBy = $sortable[$sort] ?? 'o.placed_at';
 
         $qb = $this->db->createQueryBuilder()->from('sales_orders', 'o');
+        // Récupérer l’email du préparateur depuis meta (si présent)
+        $qb->leftJoin('o', 'sales_order_meta', 'm', 'm.order_id = o.id');
 
         if ($q !== '') {
             $qb->andWhere('(o.external_order_id LIKE :q OR o.customer_name LIKE :q OR o.customer_email LIKE :q OR o.tracking_number LIKE :q)')
@@ -57,6 +74,9 @@ final class OrderListController extends AbstractController
         if ($source !== '') { $qb->andWhere('o.source = :source')->setParameter('source', $source); }
         if ($from !== '')   { $qb->andWhere('o.placed_at >= :from')->setParameter('from', $from . ' 00:00:00'); }
         if ($to !== '')     { $qb->andWhere('o.placed_at <= :to')->setParameter('to', $to . ' 23:59:59'); }
+        if ($preparedBy !== '') { $qb->andWhere('LOWER(m.prepared_by) = LOWER(:prep)')->setParameter('prep', $preparedBy); }
+        if ($carrier !== '')    { $qb->andWhere('o.shipping_carrier = :carrier')->setParameter('carrier', $carrier); }
+        if ($tracking !== '')   { $qb->andWhere('o.tracking_number LIKE :trk')->setParameter('trk', '%' . $tracking . '%'); }
 
         // Total
         $countQb = clone $qb;
@@ -64,14 +84,88 @@ final class OrderListController extends AbstractController
         $total = (int) $this->db->fetchOne($countQb->getSQL(), $countQb->getParameters());
 
         // Données page
-        $qb->select('o.*')
+        $qb->select('o.*, m.prepared_by AS prepared_by')
            ->orderBy($orderBy, $dir)
            ->setFirstResult(($page - 1) * $perPage)
            ->setMaxResults($perPage);
 
         $items = $this->db->fetchAllAssociative($qb->getSQL(), $qb->getParameters());
+
+        // Résolution en masse des noms de préparateurs (email -> label)
+        $emails = [];
+        foreach ($items as $it) {
+            $e = \mb_strtolower(\trim((string)($it['prepared_by'] ?? '')));
+            if ($e !== '') { $emails[$e] = true; }
+        }
+        $labels = [];
+        if ($emails) {
+            $list = array_keys($emails);
+            // Tentative sur 'users' (colonnes existantes: name, email)
+            try {
+                foreach ($list as $em) {
+                    $row = $this->db->fetchAssociative(
+                        "SELECT COALESCE(NULLIF(TRIM(name), ''), email) AS label
+                           FROM users
+                          WHERE LOWER(email) = LOWER(?)",
+                        [$em]
+                    );
+                    if ($row && !empty($row['label'])) { $labels[$em] = (string) $row['label']; }
+                }
+            } catch (\Throwable) {
+                // Fallback sur "user" (colonnes name, email)
+                foreach ($list as $em) {
+                    try {
+                        $row = $this->db->fetchAssociative(
+                            "SELECT COALESCE(NULLIF(TRIM(name), ''), email) AS label
+                               FROM \"user\"
+                              WHERE LOWER(email) = LOWER(?)",
+                            [$em]
+                        );
+                        if ($row && !empty($row['label'])) { $labels[$em] = (string) $row['label']; }
+                    } catch (\Throwable) {}
+                }
+            }
+        }
+        foreach ($items as &$it) {
+            $e = \mb_strtolower(\trim((string)($it['prepared_by'] ?? '')));
+            if ($e !== '') {
+                if (isset($labels[$e])) {
+                    $it['prepared_by_label'] = $labels[$e];
+                } else {
+                    // Fallback lisible depuis l'email si pas de nom
+                    $local = (string) \strstr($e, '@', true);
+                    $it['prepared_by_label'] = \ucwords(\str_replace(['.', '_', '-'], ' ', $local !== '' ? $local : $e));
+                }
+            } else {
+                $it['prepared_by_label'] = '';
+            }
+        }
+        unset($it);
+
         $totalPages = max(1, (int) ceil($total / $perPage));
         $page = min($page, $totalPages);
+
+        // Liste des préparateurs (ROLE_PREPARATEUR) pour le filtre
+        $preparers = [];
+        try {
+            $rows = $this->db->fetchAllAssociative(
+                'SELECT name, email FROM users WHERE roles LIKE :needle ORDER BY name',
+                ['needle' => '%"ROLE_PREPARATEUR"%']
+            );
+        } catch (\Throwable) {
+            try {
+                $rows = $this->db->fetchAllAssociative(
+                    'SELECT name, email FROM "user" WHERE roles LIKE :needle ORDER BY name',
+                    ['needle' => '%"ROLE_PREPARATEUR"%']
+                );
+            } catch (\Throwable) { $rows = []; }
+        }
+        foreach ($rows as $r) {
+            $email = trim((string)($r['email'] ?? ''));
+            if ($email === '') { continue; }
+            $name  = trim((string)($r['name'] ?? ''));
+            $preparers[] = ['email' => $email, 'label' => ($name !== '' ? $name : $email)];
+        }
 
         return $this->render('admin/orders/index.html.twig', [
             'items'       => $items,
@@ -86,13 +180,22 @@ final class OrderListController extends AbstractController
             'source'      => $source,
             'placed_from' => $from,
             'placed_to'   => $to,
+            // Nouveaux filtres
+            'prepared_by' => $preparedBy,
+            'carrier'     => $carrier,
+            'tracking'    => $tracking,
+            'preparers'   => $preparers,
+            // Vue
+            'view'        => $view,
         ]);
     }
 
     #[Route('/admin/orders/export.csv', name: 'admin_orders_export', methods: ['GET'])]
     public function export(Request $request): Response
     {
-        $this->denyAccessUnlessGranted('ROLE_ADMIN');
+        if (!$this->isGranted('ROLE_ADMIN') && !$this->isGranted('ROLE_PREPARATEUR')) {
+            throw $this->createAccessDeniedException();
+        }
 
         $q        = trim((string) $request->query->get('q', ''));
         $status   = trim((string) $request->query->get('status', ''));

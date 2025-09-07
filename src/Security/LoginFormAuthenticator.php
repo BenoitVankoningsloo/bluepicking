@@ -29,8 +29,8 @@ final class LoginFormAuthenticator extends AbstractLoginFormAuthenticator
 
     public function authenticate(Request $request): Passport
     {
-        $email = (string) $request->request->get('email', '');
-        $password = (string) $request->request->get('password', '');
+        $email = \trim((string) $request->request->get('email', ''));
+        $password = \trim((string) $request->request->get('password', ''));
         $csrf = (string) $request->request->get('_csrf_token', '');
 
         // Mémoriser le dernier identifiant saisi (clé officielle côté Security Http)

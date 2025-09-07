@@ -41,8 +41,17 @@ final class OrderOdooActionsController extends AbstractController
 
         try {
             if ($ref === '') {
-                // Batch par défaut: 30 derniers jours, états principaux
-                $since  = (new DateTimeImmutable('-30 days'))->format('Y-m-d');
+                // Batch: since=all (total) ou défaut 30 derniers jours, états principaux
+                $sinceParam = \trim((string)$req->query->get('since', ''));
+                $since = null;
+                if ($sinceParam === '' || strtolower($sinceParam) === '30d') {
+                    $since = (new DateTimeImmutable('-30 days'))->format('Y-m-d');
+                } elseif (strtolower($sinceParam) === 'all') {
+                    $since = null; // import complet
+                } elseif (\preg_match('/^\d{4}-\d{2}-\d{2}$/', $sinceParam)) {
+                    $since = $sinceParam;
+                }
+
                 $states = ['draft','sent','sale','done','cancel'];
 
                 // Doit retourner ['imported'=>int,'last_ref'=>?string,'errors'=>int]
@@ -83,7 +92,9 @@ final class OrderOdooActionsController extends AbstractController
     #[Route('/admin/orders/{id<\d+>}/odoo/confirm', name: 'admin_odoo_confirm_order', methods: ['POST'])]
     public function confirm(int $id, Request $req, OdooSalesService $svc): RedirectResponse
     {
-        $this->denyAccessUnlessGranted('ROLE_ADMIN');
+        if (!$this->isGranted('ROLE_ADMIN') && !$this->isGranted('ROLE_PREPARATEUR')) {
+            throw $this->createAccessDeniedException();
+        }
 
         if (!$this->isCsrfTokenValid('odoo_confirm_'.$id, (string)$req->request->get('_token'))) {
             $this->addFlash('danger', 'CSRF invalide');
@@ -119,7 +130,9 @@ final class OrderOdooActionsController extends AbstractController
     #[Route('/admin/orders/{id<\d+>}/odoo/cancel', name: 'admin_odoo_cancel_order', methods: ['POST'])]
     public function cancel(int $id, Request $req, OdooSalesService $svc): RedirectResponse
     {
-        $this->denyAccessUnlessGranted('ROLE_ADMIN');
+        if (!$this->isGranted('ROLE_ADMIN') && !$this->isGranted('ROLE_PREPARATEUR')) {
+            throw $this->createAccessDeniedException();
+        }
 
         if (!$this->isCsrfTokenValid('odoo_cancel_'.$id, (string)$req->request->get('_token'))) {
             $this->addFlash('danger', 'CSRF invalide');
@@ -154,7 +167,9 @@ final class OrderOdooActionsController extends AbstractController
     #[Route('/admin/orders/{id<\d+>}/odoo/refresh-lines', name: 'admin_odoo_refresh_lines', methods: ['POST'])]
     public function refreshLines(int $id, Request $req, OdooSalesService $svc): RedirectResponse
     {
-        $this->denyAccessUnlessGranted('ROLE_ADMIN');
+        if (!$this->isGranted('ROLE_ADMIN') && !$this->isGranted('ROLE_PREPARATEUR')) {
+            throw $this->createAccessDeniedException();
+        }
 
         if (!$this->isCsrfTokenValid('odoo_refresh_'.$id, (string)$req->request->get('_token'))) {
             $this->addFlash('danger', 'CSRF invalide');
@@ -178,7 +193,9 @@ final class OrderOdooActionsController extends AbstractController
     #[Route('/admin/orders/{id<\d+>}/odoo/picking/push-validate', name: 'admin_odoo_push_validate', methods: ['POST'])]
     public function pushValidate(int $id, Request $req, OdooSalesService $svc): RedirectResponse
     {
-        $this->denyAccessUnlessGranted('ROLE_ADMIN');
+        if (!$this->isGranted('ROLE_ADMIN') && !$this->isGranted('ROLE_PREPARATEUR')) {
+            throw $this->createAccessDeniedException();
+        }
 
         if (!$this->isCsrfTokenValid('odoo_pushval_'.$id, (string)$req->request->get('_token'))) {
             $this->addFlash('danger', 'CSRF invalide');
@@ -200,13 +217,17 @@ final class OrderOdooActionsController extends AbstractController
         try {
             $svc->pushPreparedAndValidate($this->db, $id);
 
-            // Verrouiller côté Bluepicking
-            $this->db->executeStatement(
-                'INSERT INTO sales_order_meta (order_id, picking_validated_at)
-                 VALUES (?, NOW())
-                 ON DUPLICATE KEY UPDATE picking_validated_at = NOW()',
+            // Verrouiller côté Bluepicking (portable SQLite/MySQL)
+            $affected = $this->db->executeStatement(
+                'UPDATE sales_order_meta SET picking_validated_at = CURRENT_TIMESTAMP WHERE order_id = ?',
                 [$id]
             );
+            if ($affected === 0) {
+                $this->db->executeStatement(
+                    'INSERT INTO sales_order_meta (order_id, picking_validated_at) VALUES (?, CURRENT_TIMESTAMP)',
+                    [$id]
+                );
+            }
 
             $this->addFlash('success', 'Bon de livraison validé dans Odoo (stock à jour).');
         } catch (Throwable $e) {

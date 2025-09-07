@@ -10,11 +10,11 @@ use Symfony\Component\HttpKernel\Event\ExceptionEvent;
 use Symfony\Component\HttpKernel\KernelEvents;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 
-final class RegistrationExceptionSubscriber implements EventSubscriberInterface
+final readonly class RegistrationExceptionSubscriber implements EventSubscriberInterface
 {
     public function __construct(
-        private readonly RequestStack $requestStack,
-        private readonly UrlGeneratorInterface $urlGenerator
+        private RequestStack          $requestStack,
+        private UrlGeneratorInterface $urlGenerator
     ) {
     }
 

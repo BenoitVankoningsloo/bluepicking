@@ -58,6 +58,15 @@
 
             <dt class="col-5">Mise à jour</dt>
             <dd class="col-7">{{ o.updated_at ? o.updated_at|date('Y-m-d H:i') : '—' }}</dd>
+
+            <dt class="col-5">Ordres de préparation</dt>
+            <dd class="col-7">
+              {% if pickings is defined and pickings %}
+                {% for p in pickings %}
+                  <a href="{{ path('admin_delivery_show', {id: p.odoo_id}) }}"><code>{{ p.name }}</code></a>{% if not loop.last %}, {% endif %}
+                {% endfor %}
+              {% else %}—{% endif %}
+            </dd>
           </dl>
         </div>
       </div>
@@ -81,7 +90,7 @@
           <div>{{ ship_postcode }} {{ ship_city }}</div>
           <div>{{ ship_country }}</div>
           {% if ship_phone %}<div class="text-muted mt-2 small">Tél. {{ ship_phone }}</div>{% endif %}
-          <div class="text-muted mt-2 small">Préparateur : {{ meta.prepared_by ?: '—' }}</div>
+          <div class="text-muted mt-2 small">Préparateur : {{ prepared_by_label|default(meta.prepared_by|default('—')) }}</div>
         </div>
       </div>
     </div>

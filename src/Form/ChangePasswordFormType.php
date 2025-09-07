@@ -11,6 +11,11 @@ use Symfony\Component\Form\FormBuilderInterface;
 use Symfony\Component\Validator\Constraints\Length;
 use Symfony\Component\Validator\Constraints\NotBlank;
 
+/**
+ * Formulaire de réinitialisation de mot de passe via lien (token).
+ * - Utilisé après validation du token (ResetPasswordController::reset).
+ * - Le champ plainPassword (répété) n'est pas mappé sur l'entité.
+ */
 class ChangePasswordFormType extends AbstractType
 {
     public function buildForm(FormBuilderInterface $builder, array $options): void

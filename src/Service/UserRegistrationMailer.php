@@ -12,10 +12,10 @@ use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 final class UserRegistrationMailer
 {
     public function __construct(
-        private MailerInterface       $mailer,
-        private UrlGeneratorInterface $urlGenerator,
-        #[Autowire('%app.contact.to%')] private string $adminEmail,
-        #[Autowire('%app.mailer.from%')] private string $defaultFrom,
+        private readonly MailerInterface                         $mailer,
+        private readonly UrlGeneratorInterface                   $urlGenerator,
+        #[Autowire('%app.contact.to%')] private readonly string  $adminEmail,
+        #[Autowire('%app.mailer.from%')] private readonly string $defaultFrom,
     ) {
     }
 
