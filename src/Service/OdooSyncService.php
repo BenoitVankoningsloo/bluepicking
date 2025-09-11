@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Service;
 
 use Doctrine\DBAL\Connection;
+use Psr\Log\LoggerInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 final class OdooSyncService
@@ -13,6 +14,7 @@ final class OdooSyncService
         private readonly Connection $db,
         private readonly OdooSalesService $sales,
         private readonly HttpClientInterface $http,
+        private readonly LoggerInterface $logger,
     ) {}
 
     public function upsertFromOdooPayload(array $data): int
@@ -35,39 +37,78 @@ final class OdooSyncService
             }
         }
 
+        // S'assure de la présence de la colonne delivery_status (portable SQLite/MySQL)
+        $this->ensureSalesOrdersColumns();
+
         $this->db->beginTransaction();
         try {
-            // 1) Upsert entête
-            $this->db->executeStatement(
-                'INSERT INTO sales_orders (
-                    external_order_id, source, status, customer_name, customer_email,
-                    placed_at, payload_json, item_count,
-                    odoo_sale_order_id, odoo_name, odoo_synced_at,
-                    total_amount, currency
-                 ) VALUES (?,?,?,?,?,?,?,?,?,?, NOW(), ?, ?)
-                 ON DUPLICATE KEY UPDATE
-                    source=VALUES(source),
-                    status=VALUES(status),
-                    customer_name=VALUES(customer_name),
-                    customer_email=VALUES(customer_email),
-                    placed_at=VALUES(placed_at),
-                    payload_json=VALUES(payload_json),
-                    item_count=VALUES(item_count),
-                    odoo_sale_order_id=VALUES(odoo_sale_order_id),
-                    odoo_name=VALUES(odoo_name),
-                    odoo_synced_at=VALUES(odoo_synced_at),
-                    total_amount=VALUES(total_amount),
-                    currency=VALUES(currency)',
-                [
-                    $so['name'], 'odoo', (string)$so['state'],
-                    $partner['name'] ?? '', $partner['email'] ?? '',
-                    $so['date_order'] ?? null,
-                    json_encode($data, JSON_UNESCAPED_UNICODE),
-                    is_countable($lines) ? count($lines) : 0,
-                    (int)$so['id'], (string)$so['name'],
-                    $amountTotal, $currencyCode,
-                ]
+            // 1) Upsert entête (portable SQLite/MySQL)
+            $extRef = (string)$so['name'];
+            $odooId = (int)$so['id'];
+            $dlv    = (string)($so['delivery_status'] ?? 'no');
+
+            // Trace pour contrôle de la valeur remontée par Odoo
+            $this->logger->info('Odoo import SO', ['name' => $extRef, 'odoo_id' => $odooId, 'delivery_status' => $dlv]);
+
+            // Cherche une ligne existante par odoo_sale_order_id ou external_order_id
+            $existing = $this->db->fetchAssociative(
+                'SELECT id FROM sales_orders WHERE odoo_sale_order_id = ? OR external_order_id = ? LIMIT 1',
+                [$odooId, $extRef]
             );
+
+            if ($existing) {
+                // Mise à jour
+                $this->db->executeStatement(
+                    'UPDATE sales_orders
+                        SET external_order_id = ?, source = ?, status = ?, delivery_status = ?, customer_name = ?, customer_email = ?,
+                            placed_at = ?, payload_json = ?, item_count = ?,
+                            odoo_sale_order_id = ?, odoo_name = ?, odoo_synced_at = CURRENT_TIMESTAMP,
+                            total_amount = ?, currency = ?
+                      WHERE id = ?',
+                    [
+                        $extRef, 'odoo', (string)$so['state'], $dlv,
+                        $partner['name'] ?? '', $partner['email'] ?? '',
+                        $so['date_order'] ?? null,
+                        json_encode($data, JSON_UNESCAPED_UNICODE),
+                        is_countable($lines) ? count($lines) : 0,
+                        $odooId, (string)$so['name'],
+                        $amountTotal, $currencyCode,
+                        (int)$existing['id'],
+                    ]
+                );
+
+                // Log post-mise à jour
+                $this->logger->info('SO mise à jour', [
+                    'id' => (int)$existing['id'],
+                    'delivery_status_new' => $dlv
+                ]);
+            } else {
+                // Insertion
+                $this->db->executeStatement(
+                    'INSERT INTO sales_orders (
+                        external_order_id, source, status, delivery_status, customer_name, customer_email,
+                        placed_at, payload_json, item_count,
+                        odoo_sale_order_id, odoo_name, odoo_synced_at,
+                        total_amount, currency
+                     ) VALUES (?,?,?,?,?,?,?, ?,?,?,?, CURRENT_TIMESTAMP, ?, ?)',
+                    [
+                        $extRef, 'odoo', (string)$so['state'], $dlv,
+                        $partner['name'] ?? '', $partner['email'] ?? '',
+                        $so['date_order'] ?? null,
+                        json_encode($data, JSON_UNESCAPED_UNICODE),
+                        is_countable($lines) ? count($lines) : 0,
+                        $odooId, (string)$so['name'],
+                        $amountTotal, $currencyCode,
+                    ]
+                );
+
+                // Log post-insertion
+                $this->logger->info('SO insérée', [
+                    'external_order_id' => $extRef,
+                    'odoo_id' => $odooId,
+                    'delivery_status' => $dlv
+                ]);
+            }
 
             // ID local
             $local = $this->db->fetchAssociative('SELECT id FROM sales_orders WHERE odoo_sale_order_id = ?', [(int)$so['id']])
@@ -258,6 +299,18 @@ final class OdooSyncService
             try { $this->db->executeStatement('CREATE INDEX IF NOT EXISTS idx_pickings_partner ON odoo_pickings(partner_id)'); } catch (\Throwable) {}
         }
 
+        /**
+         * Ajoute la colonne delivery_status si absente (portable SQLite/MySQL).
+         * Tolère les erreurs si la colonne existe déjà.
+         */
+        private function ensureSalesOrdersColumns(): void
+        {
+            try {
+                $this->db->executeStatement('ALTER TABLE sales_orders ADD COLUMN delivery_status VARCHAR(32) NULL');
+            } catch (\Throwable) {
+                // colonne déjà présente ou autre SGBD: on ignore
+            }
+        }
 
 }
 

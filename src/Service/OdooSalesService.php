@@ -55,7 +55,7 @@ final class OdooSalesService
                 'id','name','state','date_order',
                 'partner_id','partner_shipping_id',
                 'picking_ids','company_id','note',
-                'amount_total','currency_id',
+                'amount_total','currency_id','delivery_status',
             ],
             'limit' => 1
         ]);

@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "a9ba00fb1a2e7da382b19410b5850ed2",
+    "content-hash": "2cd0327be194fdc49516ef505b160f30",
     "packages": [
         {
             "name": "antidot-be/bpost-api-library",
@@ -11011,7 +11011,8 @@
     "platform": {
         "php": ">=8.2",
         "ext-ctype": "*",
-        "ext-iconv": "*"
+        "ext-iconv": "*",
+        "ext-zip": "*"
     },
     "platform-dev": [],
     "plugin-api-version": "2.6.0"

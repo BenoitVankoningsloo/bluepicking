@@ -115,14 +115,15 @@ th .sort-head .sort-arrow.active{ opacity:1; font-weight:700; }
              class="form-control form-control-w-560 form-control-tall"
              placeholder="Rechercher (ID externe, client, tracking)">
       {# Conserver les filtres existants lors d’une recherche #}
-      <input type="hidden" name="status"       value="{{ status }}">
-      <input type="hidden" name="source"       value="{{ source }}">
-      <input type="hidden" name="prepared_by"  value="{{ prepared_by|default('') }}">
-      <input type="hidden" name="carrier"      value="{{ carrier }}">
-      <input type="hidden" name="placed_from"  value="{{ placed_from }}">
-      <input type="hidden" name="placed_to"    value="{{ placed_to }}">
-      <input type="hidden" name="sort"         value="{{ sort }}">
-      <input type="hidden" name="dir"          value="{{ dir }}">
+      <input type="hidden" name="status"         value="{{ status }}">
+      <input type="hidden" name="source"         value="{{ source }}">
+      <input type="hidden" name="prepared_by"    value="{{ prepared_by|default('') }}">
+      <input type="hidden" name="carrier"        value="{{ carrier }}">
+      <input type="hidden" name="placed_from"    value="{{ placed_from }}">
+      <input type="hidden" name="placed_to"      value="{{ placed_to }}">
+      <input type="hidden" name="delivery_state" value="{{ delivery_state|default('') }}">
+      <input type="hidden" name="sort"           value="{{ sort }}">
+      <input type="hidden" name="dir"            value="{{ dir }}">
     </div>
     <div class="ms-0 ms-sm-2">
       <a class="btn btn-sm btn-outline-secondary" href="{{ path(app.request.attributes.get('_route')) }}">Réinitialiser</a>
@@ -165,6 +166,20 @@ th .sort-head .sort-arrow.active{ opacity:1; font-weight:700; }
         </select>
       </div>
 
+      {# État (livraison) identique à /admin/deliveries #}
+      <div class="col-12 col-md-4 col-lg-2">
+        <label class="form-label d-block">État (livraison)</label>
+        <select name="delivery_state" class="form-select">
+          <option value="">— État —</option>
+          <option value="draft"    {{ delivery_state == 'draft'    ? 'selected' : '' }}>Brouillon</option>
+          <option value="waiting"  {{ delivery_state == 'waiting'  ? 'selected' : '' }}>En attente</option>
+          <option value="confirmed"{{ delivery_state == 'confirmed'? 'selected' : '' }}>Confirmé</option>
+          <option value="assigned" {{ delivery_state == 'assigned' ? 'selected' : '' }}>Réservé</option>
+          <option value="done"     {{ delivery_state == 'done'     ? 'selected' : '' }}>Terminé</option>
+          <option value="cancel"   {{ delivery_state == 'cancel'   ? 'selected' : '' }}>Annulé</option>
+        </select>
+      </div>
+
       <div class="col-12 col-md-4 col-lg-2">
         <label class="form-label d-block">Préparateur</label>
         <select name="prepared_by" class="form-select">
@@ -199,7 +214,7 @@ th .sort-head .sort-arrow.active{ opacity:1; font-weight:700; }
       <div class="col-12 d-flex justify-content-start justify-content-md-end">
         <div>
           <button class="btn btn-primary me-2">Filtrer</button>
-          {% set hasAny = q or status or source or placed_from or placed_to or prepared_by or carrier %}
+          {% set hasAny = q or status or source or placed_from or placed_to or prepared_by or carrier or delivery_state %}
           {% if hasAny %}
             <a class="btn btn-link" href="{{ path(app.request.attributes.get('_route')) }}">Réinitialiser</a>
           {% endif %}
@@ -224,16 +239,17 @@ th .sort-head .sort-arrow.active{ opacity:1; font-weight:700; }
     <table class="table table-striped align-middle">
       <thead>
         <tr>
-          <th>{{ self.sort_link('ID externe', 'external_order_id', sort, dir) }}</th>
-          <th>{{ self.sort_link('Statut', 'status', sort, dir) }}</th>
+          <th>{{ self.sort_link('# de commande', 'external_order_id', sort, dir) }}</th>
+          <th>{{ self.sort_link('Etat commande', 'status', sort, dir) }}</th>
+          <th>Préparation</th>
+          <th>Etat Livraison</th>
+          <th>{{ self.sort_link('Doc logistique', 'delivery_status', sort, dir) }}</th>
           <th>{{ self.sort_link('Client', 'customer_name', sort, dir) }}</th>
           <th class="d-none d-lg-table-cell">{{ self.sort_link('Préparateur', 'prepared_by', sort, dir) }}</th>
-          {# Articles supprimé #}
+          <th class="text-end d-none d-lg-table-cell">{{ self.sort_link('Nbr d\'articles', 'item_count', sort, dir) }}</th>
           <th class="d-none d-lg-table-cell">{{ self.sort_link('Source', 'source', sort, dir) }}</th>
-          <th class="d-none d-lg-table-cell">{{ self.sort_link('Transport', 'shipping_carrier', sort, dir) }}</th>
-          <th class="d-none d-lg-table-cell">{{ self.sort_link('Tracking', 'tracking_number', sort, dir) }}</th>
-          <th class="d-none d-md-table-cell">{{ self.sort_link('Passée le', 'placed_at', sort, dir) }}</th>
-          <th class="d-none d-lg-table-cell">{{ self.sort_link('Maj', 'updated_at', sort, dir) }}</th>
+          <th class="d-none d-lg-table-cell">{{ self.sort_link('Transporteur', 'shipping_carrier', sort, dir) }}</th>
+          <th class="d-none d-md-table-cell">{{ self.sort_link('Commandé le', 'placed_at', sort, dir) }}</th>
           <th>Actions</th>
         </tr>
       </thead>
@@ -256,6 +272,91 @@ th .sort-head .sort-arrow.active{ opacity:1; font-weight:700; }
             </span>
           </td>
 
+          {# ==== Préparation (état des pickings: waiting/confirmed/assigned/done/cancel) ==== #}
+          <td>
+            {% set pRaw = (o.prep_state ?? '') %}
+            {% set pKey = pRaw ? pRaw|lower : '' %}
+            {% set pKnown = ['waiting','confirmed','assigned','done','cancel'] %}
+            {% set pKey = pKey in pKnown ? pKey : '' %}
+            {% set pClassMap = {
+              'waiting':'status-draft',
+              'confirmed':'status-draft',
+              'assigned':'status-processing',
+              'done':'status-done',
+              'cancel':'status-cancel'
+            } %}
+            {% set pLabelMap = {
+              'waiting':'En attente',
+              'confirmed':'En attente',
+              'assigned':'En préparation',
+              'done':'Préparée',
+              'cancel':'Annulée'
+            } %}
+            {% if pKey %}
+              <span class="status-badge {{ pClassMap[pKey] }}" title="{{ pRaw }}">
+                {{ pLabelMap[pKey] }}
+              </span>
+            {% else %}
+              <span class="status-badge status-unknown" title="—">—</span>
+            {% endif %}
+          </td>
+
+          {# ==== État Livraison (état des pickings Odoo): draft, waiting, confirmed, assigned, done, cancel ==== #}
+          <td>
+            {% set dRaw = (o.delivery_state ?? '') %}
+            {% set dKey = dRaw ? dRaw|lower : '' %}
+            {% set dKnown = ['draft','waiting','confirmed','assigned','done','cancel'] %}
+            {% set dKey = dKey in dKnown ? dKey : '' %}
+            {% set dClassMap = {
+              'draft':'status-draft',
+              'waiting':'status-processing',
+              'confirmed':'status-processing',
+              'assigned':'status-ready',
+              'done':'status-done',
+              'cancel':'status-cancel'
+            } %}
+            {% set dLabelMap = {
+              'draft':'Brouillon',
+              'waiting':'En attente',
+              'confirmed':'Confirmé',
+              'assigned':'Réservé',
+              'done':'Terminé',
+              'cancel':'Annulé'
+            } %}
+            {% if dKey %}
+              <span class="status-badge {{ dClassMap[dKey] }}" title="{{ dRaw }}">
+                {{ dLabelMap[dKey] }}
+              </span>
+            {% else %}
+              <span class="status-badge status-unknown" title="—">—</span>
+            {% endif %}
+          </td>
+
+          {# ==== Doc logistique (sale.order.delivery_status Odoo): no, to deliver, partially_delivered, delivered ==== #}
+          <td>
+            {% set dlvRaw = (o.delivery_status ?? '') %}
+            {% set dlvKey = dlvRaw ? dlvRaw|lower : '' %}
+            {% set dlvLabelMap = {
+              'no':'Aucun',
+              'to deliver':'À livrer',
+              'partially_delivered':'Partiellement livré',
+              'delivered':'Livré'
+            } %}
+            {% set dlvClassMap = {
+              'no':'status-unknown',
+              'to deliver':'status-processing',
+              'partially_delivered':'status-ready',
+              'delivered':'status-done'
+            } %}
+            {% if dlvRaw %}
+              <span class="status-badge {{ dlvClassMap[dlvKey] ?? 'status-unknown' }}" title="{{ dlvRaw }}">
+                {{ dlvLabelMap[dlvKey] ?? dlvRaw }}
+              </span>
+            {% else %}
+              <span class="status-badge status-unknown" title="—">—</span>
+            {% endif %}
+          </td>
+
           <td>
             {{ o.customer_name }}
           </td>
@@ -270,9 +371,7 @@ th .sort-head .sort-arrow.active{ opacity:1; font-weight:700; }
             {% if o.shipping_service %}{% set parts = parts|merge([o.shipping_service]) %}{% endif %}
             {{ parts|join(' · ') }}
           </td>
-          <td class="d-none d-lg-table-cell">{{ o.tracking_number }}</td>
           <td class="d-none d-md-table-cell">{{ o.placed_at ? o.placed_at|date('Y-m-d H:i') : '' }}</td>
-          <td class="d-none d-lg-table-cell">{{ o.updated_at ? o.updated_at|date('Y-m-d H:i') : '' }}</td>
           <td>
             <div class="btn-group btn-group-sm" role="group">
               <a class="btn btn-outline-primary"  title="Traitement"
@@ -281,7 +380,7 @@ th .sort-head .sort-arrow.active{ opacity:1; font-weight:700; }
           </td>
         </tr>
       {% else %}
-        <tr><td colspan="10" class="text-center text-muted">Aucune commande.</td></tr>
+        <tr><td colspan="11" class="text-center text-muted">Aucune commande.</td></tr>
       {% endfor %}
       </tbody>
     </table>

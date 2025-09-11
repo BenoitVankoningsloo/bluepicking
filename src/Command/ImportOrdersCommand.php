@@ -72,6 +72,7 @@ class ImportOrdersCommand extends Command
 
                 $extId = trim((string)$row['external_order_id']);
                 $status= trim((string)$row['status']);
+                $delivery = isset($row['delivery_status']) ? trim((string)$row['delivery_status']) : null;
                 $custN = $row['customer_name'] ?? null;
                 $custE = $row['customer_email'] ?? null;
                 $total = $this->toDecimal($row['total_amount']);
@@ -86,14 +87,14 @@ class ImportOrdersCommand extends Command
 
                 if ($dryRun) { continue; }
 
-                $sql = 'INSERT INTO sales_orders (external_order_id, status, customer_name, customer_email, total_amount, currency, item_count, source, shipping_carrier, shipping_service, tracking_number, placed_at, payload_json)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                $sql = 'INSERT INTO sales_orders (external_order_id, status, delivery_status, customer_name, customer_email, total_amount, currency, item_count, source, shipping_carrier, shipping_service, tracking_number, placed_at, payload_json)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ON DUPLICATE KEY UPDATE
-                          status=?, customer_name=?, customer_email=?, total_amount=?, currency=?, item_count=?, source=?, shipping_carrier=?, shipping_service=?, tracking_number=?, placed_at=?, payload_json=?, updated_at=CURRENT_TIMESTAMP';
+                          status=?, delivery_status=?, customer_name=?, customer_email=?, total_amount=?, currency=?, item_count=?, source=?, shipping_carrier=?, shipping_service=?, tracking_number=?, placed_at=?, payload_json=?, updated_at=CURRENT_TIMESTAMP';
 
                 $params = [
-                    $extId, $status, $custN, $custE, $total, $cur, $items, $source, $carrier, $service, $tracking, $placed, $payload,
-                    $status, $custN, $custE, $total, $cur, $items, $source, $carrier, $service, $tracking, $placed, $payload
+                    $extId, $status, $delivery, $custN, $custE, $total, $cur, $items, $source, $carrier, $service, $tracking, $placed, $payload,
+                    $status, $delivery, $custN, $custE, $total, $cur, $items, $source, $carrier, $service, $tracking, $placed, $payload
                 ];
 
                 $affected = $this->db->executeStatement($sql, $params);

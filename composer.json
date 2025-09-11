@@ -7,6 +7,7 @@
         "php": ">=8.2",
         "ext-ctype": "*",
         "ext-iconv": "*",
+        "ext-zip": "*",
         "antidot-be/bpost-api-library": "^3.7",
         "doctrine/dbal": "^3.10.1",
         "doctrine/doctrine-bundle": "^2.15.1",
@@ -38,8 +39,7 @@
         "symfony/yaml": "7.3.*",
         "symfonycasts/reset-password-bundle": "^1.23.2",
         "twig/extra-bundle": "^3.21",
-        "twig/string-extra": "^3.21",
-        "ext-zip": "*"
+        "twig/string-extra": "^3.21"
     },
     "config": {
         "allow-plugins": {

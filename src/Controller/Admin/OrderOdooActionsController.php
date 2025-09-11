@@ -52,22 +52,27 @@ final class OrderOdooActionsController extends AbstractController
                     $since = $sinceParam;
                 }
 
-                $states = ['draft','sent','sale','done','cancel'];
+                // 1) Commandes (inclut delivery_status depuis sale.order)
+                $orderStates = ['draft','sent','sale','done','cancel'];
+                $resOrders = $sync->syncBatch($orderStates, $since);
+                $ordersImported = (int)($resOrders['imported'] ?? 0);
+                $ordersErrors   = (int)($resOrders['errors'] ?? 0);
+                $ordersLastRef  = $resOrders['last_ref'] ?? '—';
 
-                // Doit retourner ['imported'=>int,'last_ref'=>?string,'errors'=>int]
-                $res = $sync->syncBatch($states, $since);
-                $imported = (int)($res['imported'] ?? 0);
-                $errors   = (int)($res['errors'] ?? 0);
-                $lastRef  = $res['last_ref'] ?? '—';
+                // 2) Pickings (stock.picking) pour tenir la table locale odoo_pickings à jour
+                $pickingStates = ['draft','waiting','confirmed','assigned','done','cancel'];
+                $resPickings = $sync->pickings($pickingStates, $since, null, 500, 0);
+                $pickingsImported = (int)($resPickings['imported'] ?? 0);
 
                 $this->addFlash(
                     'success',
                     sprintf(
-                        'Batch Odoo: %d importés%s. Période: depuis %s. Dernier: %s.',
-                        $imported,
-                        $errors ? " · erreurs: {$errors}" : '',
-                        $since,
-                        $lastRef
+                        'Batch Odoo: commandes %d importées%s (dernier: %s) · pickings %d importés. Période: depuis %s.',
+                        $ordersImported,
+                        $ordersErrors ? " · erreurs: {$ordersErrors}" : '',
+                        $ordersLastRef,
+                        $pickingsImported,
+                        $since
                     )
                 );
 
@@ -191,7 +196,7 @@ final class OrderOdooActionsController extends AbstractController
      * Puis marquer la commande comme "verrouillée" côté Bluepicking (picking_validated_at).
      */
     #[Route('/admin/orders/{id<\d+>}/odoo/picking/push-validate', name: 'admin_odoo_push_validate', methods: ['POST'])]
-    public function pushValidate(int $id, Request $req, OdooSalesService $svc): RedirectResponse
+    public function pushValidate(int $id, Request $req, OdooSalesService $svc, OdooSyncService $sync): RedirectResponse
     {
         if (!$this->isGranted('ROLE_ADMIN') && !$this->isGranted('ROLE_PREPARATEUR')) {
             throw $this->createAccessDeniedException();
@@ -229,7 +234,19 @@ final class OrderOdooActionsController extends AbstractController
                 );
             }
 
-            $this->addFlash('success', 'Bon de livraison validé dans Odoo (stock à jour).');
+            // Rafraîchir l'entête de commande depuis Odoo pour mettre à jour delivery_status localement
+            try {
+                $row = $this->db->fetchAssociative('SELECT odoo_sale_order_id, odoo_name FROM sales_orders WHERE id=?', [$id]);
+                if ($row && !empty($row['odoo_sale_order_id'])) {
+                    $sync->syncOne((int)$row['odoo_sale_order_id']);
+                } elseif ($row && !empty($row['odoo_name'])) {
+                    $sync->syncOne((string)$row['odoo_name']);
+                }
+            } catch (Throwable $ignored) {
+                // on ne bloque pas l'utilisateur si la resynchro échoue
+            }
+
+            $this->addFlash('success', 'Bon de livraison validé dans Odoo (stock à jour) · Entête resynchronisée.');
         } catch (Throwable $e) {
             $this->addFlash('danger', 'Odoo: '.$e->getMessage());
         }

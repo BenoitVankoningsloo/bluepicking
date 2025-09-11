@@ -31,9 +31,10 @@ final class OrderListController extends AbstractController
         $to       = trim((string) $request->query->get('placed_to', ''));   // YYYY-MM-DD
 
         // Nouveaux filtres
-        $preparedBy = trim((string) $request->query->get('prepared_by', '')); // email préparateur
-        $carrier    = trim((string) $request->query->get('carrier', ''));     // shipping_carrier
-        $tracking   = trim((string) $request->query->get('tracking', ''));    // tracking_number (LIKE)
+        $preparedBy    = trim((string) $request->query->get('prepared_by', '')); // email préparateur
+        $carrier       = trim((string) $request->query->get('carrier', ''));     // shipping_carrier
+        $tracking      = trim((string) $request->query->get('tracking', ''));    // tracking_number (LIKE)
+        $deliveryState = trim((string) $request->query->get('delivery_state', '')); // état picking (draft, waiting, ...)
 
         // Vue: 'full' (complète) ou 'tablet' (simplifiée)
         $view = (string) $request->query->get('view', 'full');
@@ -59,6 +60,8 @@ final class OrderListController extends AbstractController
             'prepared_by'       => 'm.prepared_by',
             'placed_at'         => 'o.placed_at',
             'updated_at'        => 'o.updated_at',
+            // Ajout tri “Doc logistique” (delivery_status Odoo)
+            'delivery_status'   => 'o.delivery_status',
         ];
         $orderBy = $sortable[$sort] ?? 'o.placed_at';
 
@@ -77,6 +80,24 @@ final class OrderListController extends AbstractController
         if ($preparedBy !== '') { $qb->andWhere('LOWER(m.prepared_by) = LOWER(:prep)')->setParameter('prep', $preparedBy); }
         if ($carrier !== '')    { $qb->andWhere('o.shipping_carrier = :carrier')->setParameter('carrier', $carrier); }
         if ($tracking !== '')   { $qb->andWhere('o.tracking_number LIKE :trk')->setParameter('trk', '%' . $tracking . '%'); }
+
+        // Filtre État (livraison) via odoo_pickings.origin = o.odoo_name ou origin = o.external_order_id
+        if ($deliveryState !== '') {
+            $pickingsTableExists = true;
+            try {
+                $this->db->executeQuery('SELECT 1 FROM odoo_pickings LIMIT 1')->fetchOne();
+            } catch (\Throwable) {
+                $pickingsTableExists = false;
+            }
+
+            if ($pickingsTableExists) {
+                $qb->andWhere('EXISTS (SELECT 1 FROM odoo_pickings op WHERE (op.origin = o.odoo_name OR op.origin = o.external_order_id) AND op.state = :dstate)')
+                   ->setParameter('dstate', $deliveryState);
+            } else {
+                // Si la table n'existe pas mais un filtre est demandé -> aucun résultat pour éviter une erreur SQL
+                $qb->andWhere('1=0');
+            }
+        }
 
         // Total
         $countQb = clone $qb;
@@ -142,6 +163,123 @@ final class OrderListController extends AbstractController
         }
         unset($it);
 
+        // ====== État de livraison: refléter l’état des pickings (comme /admin/deliveries) ======
+        // Classement pour choisir l’état le plus avancé si plusieurs pickings par commande
+        $rank = ['cancel'=>-1, 'draft'=>10, 'waiting'=>20, 'confirmed'=>30, 'assigned'=>40, 'done'=>50];
+
+        // Vérifie l'existence de la table odoo_pickings
+        $pickingsTableExists = true;
+        try { $this->db->executeQuery('SELECT 1 FROM odoo_pickings LIMIT 1')->fetchOne(); }
+        catch (\Throwable) { $pickingsTableExists = false; }
+
+        if ($pickingsTableExists && $items) {
+            // Collecte des origins à partir de odoo_name, fallback external_order_id
+            $origins = [];
+            foreach ($items as $it) {
+                $origin = \trim((string)($it['odoo_name'] ?? ''));
+                if ($origin === '') { $origin = \trim((string)($it['external_order_id'] ?? '')); }
+                if ($origin !== '') { $origins[$origin] = true; }
+            }
+
+            if ($origins) {
+                $keys = \array_keys($origins);
+                $ph = \implode(',', \array_fill(0, \count($keys), '?'));
+                $rows = $this->db->fetchAllAssociative(
+                    'SELECT origin, state FROM odoo_pickings WHERE origin IN ('.$ph.')',
+                    $keys
+                );
+
+                // Choisit le meilleur état par origin
+                $bestByOrigin = [];
+                foreach ($rows as $r) {
+                    $o  = (string)($r['origin'] ?? '');
+                    $st = \strtolower((string)($r['state'] ?? ''));
+                    if ($o === '' || !isset($rank[$st])) { continue; }
+                    $cur = $bestByOrigin[$o] ?? null;
+                    if ($cur === null || $rank[$st] > $rank[$cur]) {
+                        $bestByOrigin[$o] = $st;
+                    }
+                }
+
+                // Affecte delivery_state sur chaque commande
+                foreach ($items as &$it) {
+                    $origin = \trim((string)($it['odoo_name'] ?? ''));
+                    if ($origin === '') { $origin = \trim((string)($it['external_order_id'] ?? '')); }
+                    $it['delivery_state'] = ($origin !== '' && isset($bestByOrigin[$origin])) ? $bestByOrigin[$origin] : null;
+                }
+                unset($it);
+            }
+        }
+
+        // ====== Calcul de l'état de préparation (prep_state) ======
+        // Règles de priorité: assigned > confirmed > waiting > done > cancel
+        $rank = ['assigned'=>40, 'confirmed'=>30, 'waiting'=>20, 'done'=>10, 'cancel'=>0];
+
+        // 1) Essai depuis payload_json (pickings inclus lors de la synchro)
+        foreach ($items as &$it) {
+            $best = null;
+            $payload = (string)($it['payload_json'] ?? '');
+            if ($payload !== '') {
+                try {
+                    $data = \json_decode($payload, true, 512, JSON_THROW_ON_ERROR);
+                    $pickings = \is_array($data['pickings'] ?? null) ? $data['pickings'] : [];
+                    foreach ($pickings as $p) {
+                        $st = \strtolower((string)($p['state'] ?? ''));
+                        if ($st === '') { continue; }
+                        if (!isset($rank[$st])) { continue; }
+                        if ($best === null || $rank[$st] > $rank[$best]) {
+                            $best = $st;
+                        }
+                    }
+                } catch (\Throwable) {
+                    // ignore payload mal formé
+                }
+            }
+            $it['prep_state'] = $best; // peut rester null si non trouvé ici
+        }
+        unset($it);
+
+        // 2) Fallback/complément via la table odoo_pickings (si elle existe)
+        $pickingsTableExists = true;
+        try { $this->db->executeQuery('SELECT 1 FROM odoo_pickings LIMIT 1')->fetchOne(); }
+        catch (\Throwable) { $pickingsTableExists = false; }
+
+        if ($pickingsTableExists && $items) {
+            $origins = [];
+            foreach ($items as $it) {
+                $origin = \trim((string)($it['odoo_name'] ?? ''));
+                if ($origin === '') { $origin = \trim((string)($it['external_order_id'] ?? '')); }
+                if ($origin !== '') { $origins[$origin] = true; }
+            }
+            if ($origins) {
+                $keys = \array_keys($origins);
+                $ph = \implode(',', \array_fill(0, \count($keys), '?'));
+                $rows = $this->db->fetchAllAssociative(
+                    'SELECT origin, state FROM odoo_pickings WHERE origin IN ('.$ph.')',
+                    $keys
+                );
+                $bestByOrigin = [];
+                foreach ($rows as $r) {
+                    $o = (string)($r['origin'] ?? '');
+                    $st = \strtolower((string)($r['state'] ?? ''));
+                    if ($o === '' || !isset($rank[$st])) { continue; }
+                    $cur = $bestByOrigin[$o] ?? null;
+                    if ($cur === null || $rank[$st] > $rank[$cur]) {
+                        $bestByOrigin[$o] = $st;
+                    }
+                }
+                foreach ($items as &$it) {
+                    if (!empty($it['prep_state'])) { continue; } // garde payload si déjà présent
+                    $origin = \trim((string)($it['odoo_name'] ?? ''));
+                    if ($origin === '') { $origin = \trim((string)($it['external_order_id'] ?? '')); }
+                    if ($origin !== '' && isset($bestByOrigin[$origin])) {
+                        $it['prep_state'] = $bestByOrigin[$origin];
+                    }
+                }
+                unset($it);
+            }
+        }
+
         $totalPages = max(1, (int) ceil($total / $perPage));
         $page = min($page, $totalPages);
 
@@ -168,25 +306,26 @@ final class OrderListController extends AbstractController
         }
 
         return $this->render('admin/orders/index.html.twig', [
-            'items'       => $items,
-            'total'       => $total,
-            'page'        => $page,
-            'per_page'    => $perPage,
-            'totalPages'  => $totalPages,
-            'sort'        => $sort,
-            'dir'         => strtolower($dir),
-            'q'           => $q,
-            'status'      => $status,
-            'source'      => $source,
-            'placed_from' => $from,
-            'placed_to'   => $to,
+            'items'         => $items,
+            'total'         => $total,
+            'page'          => $page,
+            'per_page'      => $perPage,
+            'totalPages'    => $totalPages,
+            'sort'          => $sort,
+            'dir'           => strtolower($dir),
+            'q'             => $q,
+            'status'        => $status,
+            'source'        => $source,
+            'placed_from'   => $from,
+            'placed_to'     => $to,
             // Nouveaux filtres
-            'prepared_by' => $preparedBy,
-            'carrier'     => $carrier,
-            'tracking'    => $tracking,
-            'preparers'   => $preparers,
+            'prepared_by'   => $preparedBy,
+            'carrier'       => $carrier,
+            'tracking'      => $tracking,
+            'delivery_state'=> $deliveryState,
+            'preparers'     => $preparers,
             // Vue
-            'view'        => $view,
+            'view'          => $view,
         ]);
     }
 
