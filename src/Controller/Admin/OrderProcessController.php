@@ -1,5 +1,4 @@
-<?php /** @noinspection ALL */
-/** @noinspection PhpUnusedLocalVariableInspection */
+<?php
 declare(strict_types=1);
 
 namespace App\Controller\Admin;
@@ -19,7 +18,6 @@ final class OrderProcessController extends AbstractController
 
     /**
      * @throws Exception
-     * @noinspection PhpUnusedLocalVariableInspection
      */
     #[Route('/admin/orders/{id<\\d+>}/process', name: 'admin_orders_process', methods: ['GET','POST'])]
     public function __invoke(int $id, Request $req, OdooSalesService $odooSvc): Response
@@ -131,7 +129,6 @@ final class OrderProcessController extends AbstractController
         ];
 
         // Dropdown préparateur : lit les rôles JSON et filtre en PHP sur ROLE_PREPARATEUR
-        /** @noinspection PhpUnusedLocalVariableInspection */
         $users = [];
         $rows = [];
         try {
@@ -266,10 +263,321 @@ final class OrderProcessController extends AbstractController
                             $productPickings = [];
                         }
 
+                            // Ajout du picking "live" choisi (pickingData) au mapping produit -> pickings
+                            if (is_array($pickingData) && !empty($pickingData['picking']['id'])) {
+                                $odooPickId = (int)($pickingData['picking']['id'] ?? 0);
+                                $pname  = (string)($pickingData['picking']['name']  ?? ($odooPickId ?: ''));
+                                $pstate = (string)($pickingData['picking']['state'] ?? '');
+                                $linesPd = $pickingData['lines'] ?? [];
+                                if ($odooPickId > 0 && is_array($linesPd)) {
+                                    foreach ($linesPd as $pl) {
+                                        $prodId = (int)($pl['product_id'] ?? 0);
+                                        if ($prodId <= 0) { continue; }
+                                        $already = isset($productPickings[$prodId]) ? array_column($productPickings[$prodId], 'id') : [];
+                                        if (!in_array($odooPickId, $already, true)) {
+                                            $productPickings[$prodId][] = [
+                                                'id'    => $odooPickId,
+                                                'name'  => $pname !== '' ? $pname : (string)$odooPickId,
+                                                'state' => $pstate,
+                                            ];
+                                        }
+                                    }
+                                }
+                            }
+
+                        // Infos produits (barcode, référence interne...) depuis Odoo pour garantir l'affichage même sans picking enrichi
+                        $productsInfoByPid = [];
+                        try {
+                            $pidSet = [];
+                            foreach ($lines as $ln) {
+                                $pid = (int)($ln['odoo_product_id'] ?? 0);
+                                if ($pid > 0) { $pidSet[$pid] = true; }
+                            }
+                            if ($pidSet) {
+                                $productsInfoByPid = $odooSvc->getProductsInfo(array_keys($pidSet));
+                            }
+                        } catch (\Throwable) {
+                            $productsInfoByPid = [];
+                        }
+
+                        // Quantités du Sales Order en live (fallback si aucun picking)
+                        $soLinesByPid = [];
+                        try {
+                            $idOrName = null;
+                            if (!empty($o['odoo_name'])) {
+                                $idOrName = (string)$o['odoo_name'];
+                            } elseif (!empty($o['odoo_sale_order_id'])) {
+                                $idOrName = (int)$o['odoo_sale_order_id'];
+                            }
+                            if ($idOrName !== null && $idOrName !== '') {
+                                $so = $odooSvc->fetchSaleOrder($idOrName);
+                                foreach (($so['lines'] ?? []) as $sl) {
+                                    $pid = is_array($sl['product_id'] ?? null) ? ($sl['product_id'][0] ?? null) : ($sl['product_id'] ?? null);
+                                    if (!$pid) { continue; }
+                                    $qty = (float)($sl['product_uom_qty'] ?? 0.0);
+                                    $uom = is_array($sl['product_uom'] ?? null) ? ($sl['product_uom'][1] ?? '') : ($sl['product_uom'] ?? '');
+                                    $soLinesByPid[(int)$pid] = [
+                                        'ordered_qty' => $qty,
+                                        'product_uom' => $uom,
+                                    ];
+                                }
+                            }
+                        } catch (\Throwable) {
+                            $soLinesByPid = [];
+                        }
+
+                        // Récupérer TOUS les pickings liés (via SO.picking_ids en priorité), chacun avec ses lignes
+                        $allPickings = [];
+                        try {
+                            // 1) Via sale.order (picking_ids)
+                            $ref = null;
+                            if (!empty($o['odoo_sale_order_id'])) {
+                                $ref = (int)$o['odoo_sale_order_id'];
+                            } elseif (!empty($o['odoo_name'])) {
+                                $ref = (string)$o['odoo_name'];
+                            } elseif (!empty($o['external_order_id'])) {
+                                $ref = (string)$o['external_order_id'];
+                            }
+
+                            $pickedIds = [];
+                            if ($ref !== null && $ref !== '') {
+                                $soData = $odooSvc->fetchSaleOrder($ref); // ['so','partner','lines','pickings','moveSum']
+                                $soPickings = (array)($soData['pickings'] ?? []);
+                                foreach ($soPickings as $pk) {
+                                    $pid = (int)($pk['id'] ?? 0);
+                                    if ($pid > 0) { $pickedIds[$pid] = true; }
+                                }
+                                foreach (array_keys($pickedIds) as $pid) {
+                                    try {
+                                        $pd = $odooSvc->getPickingWithMoves($pid);
+                                        if ($pd && !empty($pd['lines'])) {
+                                            $allPickings[] = $pd;
+                                        }
+                                    } catch (\Throwable) { /* ignore */ }
+                                }
+                            }
+
+                            // 2) Fallback par origin si rien
+                            if (!$allPickings) {
+                                $originRef = (string)($o['odoo_name'] ?? ($o['external_order_id'] ?? ''));
+                                if ($originRef !== '') {
+                                    $all = $odooSvc->listPickings([['origin', '=', $originRef]], 50, 0, ['id','name','state','scheduled_date','origin']);
+                                    foreach ($all as $rowPk) {
+                                        $pid = (int)($rowPk['id'] ?? 0);
+                                        if ($pid <= 0) { continue; }
+                                        try {
+                                            $pd = $odooSvc->getPickingWithMoves($pid);
+                                            if ($pd && !empty($pd['lines'])) {
+                                                $allPickings[] = $pd;
+                                            }
+                                        } catch (\Throwable) { /* ignore */ }
+                                    }
+                                }
+                            }
+                        } catch (\Throwable) {
+                            $allPickings = [];
+                        }
+
+                        // Récupérer les pickings de reliquat (autres BL en attente) et leurs lignes
+                        $backorderPickings = [];
+                        try {
+                            $originRef = (string)($o['odoo_name'] ?? ($o['external_order_id'] ?? ''));
+                            if ($originRef !== '') {
+                                $all = $odooSvc->listPickings([['origin', '=', $originRef]], 20, 0, ['id','name','state','scheduled_date','origin']);
+                                $chosenId = is_array($pickingData) && !empty($pickingData['picking']['id']) ? (int)$pickingData['picking']['id'] : 0;
+                                foreach ($all as $rowPk) {
+                                    $pid = (int)($rowPk['id'] ?? 0);
+                                    $state = (string)($rowPk['state'] ?? '');
+                                    if ($pid <= 0 || $pid === $chosenId) { continue; }
+                                    // On ne liste que les BL non terminés/annulés
+                                    if (in_array($state, ['done','cancel'], true)) { continue; }
+                                    $pd = $odooSvc->getPickingWithMoves($pid);
+                                    if ($pd && !empty($pd['lines'])) {
+                                        $backorderPickings[] = $pd; // contient ['picking'=>..., 'lines'=>...]
+                                    }
+                                }
+                            }
+                        } catch (\Throwable) {
+                            $backorderPickings = [];
+                        }
+
+                        // Filtre des lignes pour le BL courant: on ne garde que les produits présents dans le picking sélectionné
+                        $linesCurrent = $lines;
+                        if (!empty($pickingLinesByPid)) {
+                            $linesCurrent = array_values(array_filter($lines, static function (array $ln) use ($pickingLinesByPid): bool {
+                                $pid = (int)($ln['odoo_product_id'] ?? 0);
+                                return $pid > 0 && isset($pickingLinesByPid[$pid]);
+                            }));
+                        }
+
+                        // Lignes déjà préparées (prepared_qty > 0) pour le BL courant
+                        $preparedLinesCurrent = [];
+                        if (!empty($pickingLinesByPid)) {
+                            foreach ($lines as $ln) {
+                                $pid = (int)($ln['odoo_product_id'] ?? 0);
+                                $pq  = $ln['prepared_qty'] ?? null;
+                                if ($pid > 0 && isset($pickingLinesByPid[$pid]) && $pq !== null && (float)$pq > 0) {
+                                    $preparedLinesCurrent[] = $ln;
+                                }
+                            }
+                        }
+
+                        // Mapping local par product_id (pour lier les inputs prepared[] aux IDs locaux)
+                        $localLinesByPid = [];
+                        foreach ($lines as $ln) {
+                            $pid = (int)($ln['odoo_product_id'] ?? 0);
+                            if ($pid > 0 && !isset($localLinesByPid[$pid])) {
+                                $localLinesByPid[$pid] = $ln;
+                            }
+                        }
+
+                        // ===== Navigation précédente/suivante basée sur la liste filtrée /admin/orders =====
+                        $listQuery = $req->query->all();
+
+                        // Filtres identiques à la liste
+                        $q            = trim((string) ($listQuery['q'] ?? ''));
+                        $status       = trim((string) ($listQuery['status'] ?? ''));
+                        $source       = trim((string) ($listQuery['source'] ?? ''));
+                        $from         = trim((string) ($listQuery['placed_from'] ?? ''));
+                        $to           = trim((string) ($listQuery['placed_to'] ?? ''));
+                        $preparedBy   = trim((string) ($listQuery['prepared_by'] ?? ''));
+                        $carrier      = trim((string) ($listQuery['carrier'] ?? ''));
+                        $tracking     = trim((string) ($listQuery['tracking'] ?? ''));
+                        $deliveryState= trim((string) ($listQuery['delivery_state'] ?? ''));
+
+                        $sort = (string) ($listQuery['sort'] ?? 'placed_at');
+                        $dir  = strtolower((string) ($listQuery['dir'] ?? 'desc')) === 'asc' ? 'ASC' : 'DESC';
+
+                        $sortable = [
+                            'external_order_id' => 'o.external_order_id',
+                            'status'            => 'o.status',
+                            'customer_name'     => 'o.customer_name',
+                            'total_amount'      => 'o.total_amount',
+                            'item_count'        => 'o.item_count',
+                            'source'            => 'o.source',
+                            'shipping_carrier'  => 'o.shipping_carrier',
+                            'tracking_number'   => 'o.tracking_number',
+                            'prepared_by'       => 'm.prepared_by',
+                            'placed_at'         => 'o.placed_at',
+                            'updated_at'        => 'o.updated_at',
+                            'delivery_status'   => 'o.delivery_status',
+                        ];
+                        // Si delivery_status absent -> fallback tri
+                        try { $this->db->executeQuery('SELECT delivery_status FROM sales_orders LIMIT 1')->fetchOne(); }
+                        catch (\Throwable) {
+                            unset($sortable['delivery_status']);
+                            if ($sort === 'delivery_status') { $sort = 'placed_at'; }
+                        }
+                        $orderBy = $sortable[$sort] ?? 'o.placed_at';
+
+                        $navQb = $this->db->createQueryBuilder()->from('sales_orders', 'o');
+                        $navQb->leftJoin('o', 'sales_order_meta', 'm', 'm.order_id = o.id');
+
+                        if ($q !== '') {
+                            $navQb->andWhere('(o.external_order_id LIKE :q OR o.customer_name LIKE :q OR o.customer_email LIKE :q OR o.tracking_number LIKE :q)')
+                                  ->setParameter('q', '%' . $q . '%');
+                        }
+                        if ($status !== '')   { $navQb->andWhere('o.status = :status')->setParameter('status', $status); }
+                        if ($source !== '')   { $navQb->andWhere('o.source = :source')->setParameter('source', $source); }
+                        if ($from !== '')     { $navQb->andWhere('o.placed_at >= :from')->setParameter('from', $from . ' 00:00:00'); }
+                        if ($to !== '')       { $navQb->andWhere('o.placed_at <= :to')->setParameter('to', $to . ' 23:59:59'); }
+                        if ($preparedBy !== '') { $navQb->andWhere('LOWER(m.prepared_by) = LOWER(:prep)')->setParameter('prep', $preparedBy); }
+                        if ($carrier !== '')    { $navQb->andWhere('o.shipping_carrier = :carrier')->setParameter('carrier', $carrier); }
+                        if ($tracking !== '')   { $navQb->andWhere('o.tracking_number LIKE :trk')->setParameter('trk', '%' . $tracking . '%'); }
+
+                        // On sélectionne toutes les candidates ordonnées
+                        $navQb->select('o.id', 'o.odoo_name', 'o.external_order_id', 'o.payload_json')
+                              ->orderBy($orderBy, $dir);
+                        $rowsNav = $this->db->fetchAllAssociative($navQb->getSQL(), $navQb->getParameters(), $navQb->getParameterTypes());
+
+                        // Appliquer le filtre "état préparation" (livraison) de la même façon que la liste:
+                        // priorité payload_json, sinon fallback via odoo_pickings
+                        $rankPrep = ['assigned'=>40, 'confirmed'=>30, 'waiting'=>20, 'done'=>10, 'cancel'=>0, 'draft'=>5];
+                        $bestById = [];
+                        $needOrigins = [];
+                        foreach ($rowsNav as $rowN) {
+                            $oid = (int)($rowN['id'] ?? 0);
+                            $best = null;
+                            $payload = (string)($rowN['payload_json'] ?? '');
+                            if ($payload !== '') {
+                                try {
+                                    $data = \json_decode($payload, true, 512, JSON_THROW_ON_ERROR);
+                                    $pickings = \is_array($data['pickings'] ?? null) ? $data['pickings'] : [];
+                                    foreach ($pickings as $p) {
+                                        $st = \strtolower((string)($p['state'] ?? ''));
+                                        if ($st === '' || !isset($rankPrep[$st])) { continue; }
+                                        if ($best === null || $rankPrep[$st] > $rankPrep[$best]) { $best = $st; }
+                                    }
+                                } catch (\Throwable) {}
+                            }
+                            if ($best !== null) {
+                                $bestById[$oid] = $best;
+                            } else {
+                                $origin = \trim((string)($rowN['odoo_name'] ?? ''));
+                                if ($origin === '') { $origin = \trim((string)($rowN['external_order_id'] ?? '')); }
+                                if ($origin !== '') { $needOrigins[$origin] = true; }
+                            }
+                        }
+                        if ($needOrigins) {
+                            $ok = true;
+                            try { $this->db->executeQuery('SELECT 1 FROM odoo_pickings LIMIT 1')->fetchOne(); }
+                            catch (\Throwable) { $ok = false; }
+                            if ($ok) {
+                                $keys = \array_keys($needOrigins);
+                                $ph   = \implode(',', \array_fill(0, \count($keys), '?'));
+                                $rowsPk = $this->db->fetchAllAssociative('SELECT origin, state FROM odoo_pickings WHERE origin IN ('.$ph.')', $keys);
+                                $bestByOrigin = [];
+                                foreach ($rowsPk as $rp) {
+                                    $oName = (string)($rp['origin'] ?? '');
+                                    $st    = \strtolower((string)($rp['state'] ?? ''));
+                                    if ($oName === '' || !isset($rankPrep[$st])) { continue; }
+                                    $cur = $bestByOrigin[$oName] ?? null;
+                                    if ($cur === null || $rankPrep[$st] > $rankPrep[$cur]) { $bestByOrigin[$oName] = $st; }
+                                }
+                                foreach ($rowsNav as $rowN) {
+                                    $oid = (int)($rowN['id'] ?? 0);
+                                    if (isset($bestById[$oid])) { continue; }
+                                    $origin = \trim((string)($rowN['odoo_name'] ?? ''));
+                                    if ($origin === '') { $origin = \trim((string)($rowN['external_order_id'] ?? '')); }
+                                    if ($origin !== '' && isset($bestByOrigin[$origin])) {
+                                        $bestById[$oid] = $bestByOrigin[$origin];
+                                    }
+                                }
+                            }
+                        }
+
+                        // Appliquer le filtre demandé
+                        $target = \strtolower($deliveryState);
+                        $targets = $target === '' ? [] : (($target === 'waiting') ? ['waiting','confirmed'] : [$target]);
+
+                        $orderedIds = [];
+                        foreach ($rowsNav as $rowN) {
+                            $oid = (int)($rowN['id'] ?? 0);
+                            if ($deliveryState === '') {
+                                $orderedIds[] = $oid;
+                            } else {
+                                if (isset($bestById[$oid]) && \in_array($bestById[$oid], $targets, true)) {
+                                    $orderedIds[] = $oid;
+                                }
+                            }
+                        }
+
+                        $prevId = null; $nextId = null;
+                        if ($orderedIds) {
+                            $pos = \array_search($id, $orderedIds, true);
+                            if ($pos !== false) {
+                                if ($pos > 0) { $prevId = $orderedIds[$pos - 1]; }
+                                if ($pos < \count($orderedIds) - 1) { $nextId = $orderedIds[$pos + 1]; }
+                            }
+                        }
+
                         return $this->render('admin/orders/process.html.twig', [
                             'o'                   => $o,
                             'meta'                => $meta,
                             'lines'               => $lines,
+                            'lines_current'       => $linesCurrent,
+                            'prepared_lines_current' => $preparedLinesCurrent,
+                            'local_lines_by_pid'  => $localLinesByPid,
                             'ship'                => $ship,
                             'users'               => $users,
                             'odoo_state'          => $odooState,
@@ -277,6 +585,14 @@ final class OrderProcessController extends AbstractController
                             'picking_lines_by_pid'=> $pickingLinesByPid,
                             'pickings'            => $pickings,
                             'product_pickings'    => $productPickings,
+                            'products_info_by_pid'=> $productsInfoByPid,
+                            'so_lines_by_pid'     => $soLinesByPid,
+                            'backorder_pickings'  => $backorderPickings,
+                            'all_pickings'        => $allPickings,
+                            // Navigation
+                            'prev_id'             => $prevId,
+                            'next_id'             => $nextId,
+                            'list_query'          => $listQuery,
                     ]);
     }
 

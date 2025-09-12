@@ -33,8 +33,9 @@ final class OrderCarrierLabelController extends AbstractController
         // 2) Sinon on tente de (re)demander au service Bpost une récupération de label
         $pdf = $this->fetchLabelPdfAdaptively($id);
         if ($pdf === null) {
-            // message clair
-            throw new \RuntimeException('bpost: impossible de récupérer/générer le label (aucun PDF disponible).');
+            // Pas de PDF disponible → retour propre sur la page de traitement avec message
+            $this->addFlash('warning', 'Aucune étiquette Bpost disponible pour cette commande pour le moment.');
+            return $this->redirectToRoute('admin_orders_process', ['id' => $id]);
         }
 
         @mkdir(\dirname($path), 0775, true);

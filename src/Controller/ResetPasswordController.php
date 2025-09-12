@@ -1,6 +1,4 @@
-<?php /** @noinspection ALL */
-/** @noinspection PhpUnusedLocalVariableInspection */
-
+<?php
 declare(strict_types=1);
 
 namespace App\Controller;
@@ -19,7 +17,7 @@ use Symfony\Component\Mailer\Exception\TransportExceptionInterface;
 use Symfony\Component\Mailer\MailerInterface;
 use Symfony\Component\Mime\Address;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
-use Symfony\Component\Routing\Annotation\Route;
+use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\RateLimiter\Attribute\RateLimiter;
 use SymfonyCasts\Bundle\ResetPassword\Controller\ResetPasswordControllerTrait;
 use SymfonyCasts\Bundle\ResetPassword\Exception\ResetPasswordExceptionInterface;
@@ -117,7 +115,6 @@ use SymfonyCasts\Bundle\ResetPassword\ResetPasswordHelperInterface;
 
      /**
       * @throws TransportExceptionInterface
-      * @noinspection PhpUnusedLocalVariableInspection
       */
      private function processSendingPasswordResetEmail(string $email, MailerInterface $mailer): RedirectResponse
     {
@@ -130,7 +127,7 @@ use SymfonyCasts\Bundle\ResetPassword\ResetPasswordHelperInterface;
 
         try {
             $resetToken = $this->resetPasswordHelper->generateResetToken($user);
-        } /** @noinspection PhpUnusedLocalVariableInspection */ catch (ResetPasswordExceptionInterface $e) {
+        } catch (ResetPasswordExceptionInterface $e) {
             return $this->redirectToRoute('app_check_email');
         }
 

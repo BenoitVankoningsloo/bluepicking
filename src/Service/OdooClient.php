@@ -1,14 +1,8 @@
-<?php /** @noinspection ALL */
-/** @noinspection ALL */
-/** @noinspection ALL */
-/** @noinspection PhpUnhandledExceptionInspection */
-/** @noinspection PhpUnhandledExceptionInspection */
-/** @noinspection PhpUnhandledExceptionInspection */
+<?php
 declare(strict_types=1);
 
 namespace App\Service;
 
-use Random\RandomException;
 use RuntimeException;
 use Symfony\Contracts\HttpClient\Exception\ClientExceptionInterface;
 use Symfony\Contracts\HttpClient\Exception\DecodingExceptionInterface;
@@ -38,7 +32,6 @@ final class OdooClient
 
     /**
      * @throws TransportExceptionInterface
-     * @throws RandomException
      * @throws ServerExceptionInterface
      * @throws RedirectionExceptionInterface
      * @throws DecodingExceptionInterface
@@ -66,11 +59,9 @@ final class OdooClient
         return $data['result'] ?? null;
     }
 
-    /** @noinspection PhpUnhandledExceptionInspection */
     private function ensureLogin(): void
     {
         if ($this->uid) return;
-        /** @noinspection PhpUnhandledExceptionInspection */
         $uid = $this->jsonRpc('common', 'login', [$this->db, $this->login, $this->passOrKey]);
         if (!is_int($uid) || $uid <= 0) {
             throw new RuntimeException('Odoo login failed (uid invalide).');
@@ -78,25 +69,19 @@ final class OdooClient
         $this->uid = $uid;
     }
 
-    /** execute_kw (avec kwargs)
-     * @noinspection PhpUnhandledExceptionInspection
-     */
+    /** execute_kw (avec kwargs) */
     public function callKW(string $model, string $method, array $args = [], array $kwargs = []): mixed
     {
         $this->ensureLogin();
-        /** @noinspection PhpUnhandledExceptionInspection */
         return $this->jsonRpc('object', 'execute_kw', [
             $this->db, $this->uid, $this->passOrKey, $model, $method, $args, $kwargs
         ]);
     }
 
-    /** execute (sans kwargs)
-     * @noinspection PhpUnhandledExceptionInspection
-     */
+    /** execute (sans kwargs) */
     public function call(string $model, string $method, mixed ...$args): mixed
     {
         $this->ensureLogin();
-        /** @noinspection PhpUnhandledExceptionInspection */
         return $this->jsonRpc('object', 'execute', [
             $this->db, $this->uid, $this->passOrKey, $model, $method, ...$args
         ]);

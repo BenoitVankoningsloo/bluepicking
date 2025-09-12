@@ -15,10 +15,6 @@ use Throwable;
 #[AsCommand(name: 'app:odoo:import-sales', description: 'Importe des sale.orders Odoo en base locale')]
 final class OdooImportSalesCommand extends Command
 {
-    // Compat older Symfony:
-    protected static $defaultName = 'app:odoo:import-sales';
-    protected static $defaultDescription = 'Importe des sale.orders Odoo en base locale';
-
     public function __construct(private readonly OdooSyncService $sync)
     {
         parent::__construct();

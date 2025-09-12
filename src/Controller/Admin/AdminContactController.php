@@ -1,5 +1,4 @@
-<?php /** @noinspection ALL */
-/** @noinspection ALL */
+<?php
 declare(strict_types=1);
 
 namespace App\Controller\Admin;

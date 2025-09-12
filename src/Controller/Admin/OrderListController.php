@@ -1,16 +1,16 @@
-<?php /** @noinspection ALL */
-/** @noinspection ALL */
-/** @noinspection ALL */
-/** @noinspection ALL */
+<?php
 declare(strict_types=1);
 
 namespace App\Controller\Admin;
 
+use App\Service\OdooSalesService;
 use Doctrine\DBAL\Connection;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+use Symfony\Component\HttpFoundation\RedirectResponse;
+use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\Routing\Attribute\Route;
 
 final class OrderListController extends AbstractController
@@ -63,6 +63,15 @@ final class OrderListController extends AbstractController
             // Ajout tri “Doc logistique” (delivery_status Odoo)
             'delivery_status'   => 'o.delivery_status',
         ];
+        // Si la colonne delivery_status n'existe pas encore (avant 1er import), on la retire du tri
+        try {
+            $this->db->executeQuery('SELECT delivery_status FROM sales_orders LIMIT 1')->fetchOne();
+        } catch (\Throwable) {
+            unset($sortable['delivery_status']);
+            if ($sort === 'delivery_status') {
+                $sort = 'placed_at';
+            }
+        }
         $orderBy = $sortable[$sort] ?? 'o.placed_at';
 
         $qb = $this->db->createQueryBuilder()->from('sales_orders', 'o');
@@ -81,20 +90,97 @@ final class OrderListController extends AbstractController
         if ($carrier !== '')    { $qb->andWhere('o.shipping_carrier = :carrier')->setParameter('carrier', $carrier); }
         if ($tracking !== '')   { $qb->andWhere('o.tracking_number LIKE :trk')->setParameter('trk', '%' . $tracking . '%'); }
 
-        // Filtre État (livraison) via odoo_pickings.origin = o.odoo_name ou origin = o.external_order_id
+        // Filtre État (livraison) – aligné sur la colonne “État préparation” (payload_json prioritaire, fallback pickings)
         if ($deliveryState !== '') {
-            $pickingsTableExists = true;
-            try {
-                $this->db->executeQuery('SELECT 1 FROM odoo_pickings LIMIT 1')->fetchOne();
-            } catch (\Throwable) {
-                $pickingsTableExists = false;
+            // 1) Récupère les commandes candidates (avec filtres déjà appliqués sauf deliveryState)
+            $idsQb = clone $qb;
+            $idsQb->select('o.id', 'o.odoo_name', 'o.external_order_id', 'o.payload_json');
+            // DBAL 3: passer null provoque une TypeError, utiliser 0 pour "pas d'offset"
+            $idsQb->setFirstResult(0)->setMaxResults(null);
+            $candidates = $this->db->fetchAllAssociative($idsQb->getSQL(), $idsQb->getParameters(), $idsQb->getParameterTypes());
+
+            // Ranking identique à celui utilisé pour prep_state
+            $rank = ['assigned'=>40, 'confirmed'=>30, 'waiting'=>20, 'done'=>10, 'cancel'=>0];
+
+            $bestById = [];
+            $needOrigins = [];
+
+            // 2) Calcul depuis payload_json (prioritaire)
+            foreach ($candidates as $row) {
+                $id = (int)($row['id'] ?? 0);
+                $best = null;
+                $payload = (string)($row['payload_json'] ?? '');
+                if ($payload !== '') {
+                    try {
+                        $data = \json_decode($payload, true, 512, JSON_THROW_ON_ERROR);
+                        $pickings = \is_array($data['pickings'] ?? null) ? $data['pickings'] : [];
+                        foreach ($pickings as $p) {
+                            $st = \strtolower((string)($p['state'] ?? ''));
+                            if ($st === '' || !isset($rank[$st])) { continue; }
+                            if ($best === null || $rank[$st] > $rank[$best]) { $best = $st; }
+                        }
+                    } catch (\Throwable) {
+                        // ignore payload mal formé
+                    }
+                }
+                if ($best !== null) {
+                    $bestById[$id] = $best;
+                } else {
+                    $origin = \trim((string)($row['odoo_name'] ?? ''));
+                    if ($origin === '') { $origin = \trim((string)($row['external_order_id'] ?? '')); }
+                    if ($origin !== '') { $needOrigins[$origin] = true; }
+                }
             }
 
-            if ($pickingsTableExists) {
-                $qb->andWhere('EXISTS (SELECT 1 FROM odoo_pickings op WHERE (op.origin = o.odoo_name OR op.origin = o.external_order_id) AND op.state = :dstate)')
-                   ->setParameter('dstate', $deliveryState);
+            // 3) Fallback via la table odoo_pickings (si disponible)
+            if ($needOrigins) {
+                $pickingsTableExists = true;
+                try { $this->db->executeQuery('SELECT 1 FROM odoo_pickings LIMIT 1')->fetchOne(); }
+                catch (\Throwable) { $pickingsTableExists = false; }
+
+                if ($pickingsTableExists) {
+                    $keys = \array_keys($needOrigins);
+                    $ph   = \implode(',', \array_fill(0, \count($keys), '?'));
+                    $rows = $this->db->fetchAllAssociative(
+                        'SELECT origin, state FROM odoo_pickings WHERE origin IN ('.$ph.')',
+                        $keys
+                    );
+                    $bestByOrigin = [];
+                    foreach ($rows as $r) {
+                        $o  = (string)($r['origin'] ?? '');
+                        $st = \strtolower((string)($r['state'] ?? ''));
+                        if ($o === '' || !isset($rank[$st])) { continue; }
+                        $cur = $bestByOrigin[$o] ?? null;
+                        if ($cur === null || $rank[$st] > $rank[$cur]) { $bestByOrigin[$o] = $st; }
+                    }
+                    foreach ($candidates as $row) {
+                        $id = (int)($row['id'] ?? 0);
+                        if (isset($bestById[$id])) { continue; }
+                        $origin = \trim((string)($row['odoo_name'] ?? ''));
+                        if ($origin === '') { $origin = \trim((string)($row['external_order_id'] ?? '')); }
+                        if ($origin !== '' && isset($bestByOrigin[$origin])) {
+                            $bestById[$id] = $bestByOrigin[$origin];
+                        }
+                    }
+                }
+            }
+
+            // 4) Appliquer le filtre selon l'état demandé (identique à l'état affiché)
+            $target = \strtolower($deliveryState);
+            $matchingIds = [];
+            foreach ($candidates as $row) {
+                $id = (int)($row['id'] ?? 0);
+                if ($id <= 0) { continue; }
+                if (isset($bestById[$id]) && $bestById[$id] === $target) {
+                    $matchingIds[] = $id;
+                }
+            }
+
+            if ($matchingIds) {
+                $qb->andWhere('o.id IN (:ids_delivery_match)')
+                   ->setParameter('ids_delivery_match', $matchingIds, Connection::PARAM_INT_ARRAY);
             } else {
-                // Si la table n'existe pas mais un filtre est demandé -> aucun résultat pour éviter une erreur SQL
+                // Aucun match -> aucun résultat (aligné avec l'affichage)
                 $qb->andWhere('1=0');
             }
         }
@@ -102,7 +188,7 @@ final class OrderListController extends AbstractController
         // Total
         $countQb = clone $qb;
         $countQb->select('COUNT(*) AS cnt');
-        $total = (int) $this->db->fetchOne($countQb->getSQL(), $countQb->getParameters());
+        $total = (int) $this->db->fetchOne($countQb->getSQL(), $countQb->getParameters(), $countQb->getParameterTypes());
 
         // Données page
         $qb->select('o.*, m.prepared_by AS prepared_by')
@@ -110,7 +196,7 @@ final class OrderListController extends AbstractController
            ->setFirstResult(($page - 1) * $perPage)
            ->setMaxResults($perPage);
 
-        $items = $this->db->fetchAllAssociative($qb->getSQL(), $qb->getParameters());
+        $items = $this->db->fetchAllAssociative($qb->getSQL(), $qb->getParameters(), $qb->getParameterTypes());
 
         // Résolution en masse des noms de préparateurs (email -> label)
         $emails = [];
@@ -429,5 +515,275 @@ final class OrderListController extends AbstractController
         $response->headers->set('Content-Type', 'text/csv; charset=UTF-8');
         $response->headers->set('Content-Disposition', 'attachment; filename="' . $name . '"');
         return $response;
+    }
+
+        #[Route('/admin/orders/refresh-states', name: 'admin_orders_refresh_states', methods: ['POST'])]
+        public function refreshStates(Request $request, \App\Service\OdooSyncService $sync, OdooSalesService $sales): RedirectResponse
+        {
+            if (!$this->isGranted('ROLE_ADMIN') && !$this->isGranted('ROLE_PREPARATEUR')) {
+                throw $this->createAccessDeniedException();
+            }
+
+            $token = (string)$request->request->get('_token', '');
+            if (!$this->isCsrfTokenValid('orders_refresh', $token)) {
+                $this->addFlash('danger', 'CSRF invalide.');
+                $qsKeys = ['q','status','source','prepared_by','carrier','tracking','placed_from','placed_to','delivery_state','sort','dir','page','per_page','view'];
+                $qs = [];
+                foreach ($qsKeys as $k) {
+                    $v = $request->request->get($k, $request->query->get($k, null));
+                    if ($v !== null && $v !== '') { $qs[$k] = $v; }
+                }
+                return $this->redirectToRoute('admin_orders_list', $qs);
+            }
+
+            $idsRaw = (string)$request->request->get('ids', '');
+            $ids = array_values(array_unique(array_filter(array_map(
+                static fn($v) => (int)$v,
+                preg_split('/[,\s]+/', $idsRaw) ?: []
+            ), static fn($v) => $v > 0)));
+
+            $processed = 0;
+            $origins = [];
+
+            if ($ids) {
+                foreach ($ids as $id) {
+                    try {
+                        $row = $this->db->fetchAssociative(
+                            'SELECT odoo_sale_order_id, odoo_name, external_order_id FROM sales_orders WHERE id = ?',
+                            [$id]
+                        );
+                        if (!$row) { continue; }
+
+                        // Sync de l'entête de commande depuis Odoo
+                        $ref = null;
+                        if (!empty($row['odoo_sale_order_id'])) {
+                            $ref = (int)$row['odoo_sale_order_id'];
+                        } elseif (!empty($row['odoo_name'])) {
+                            $ref = (string)$row['odoo_name'];
+                        } elseif (!empty($row['external_order_id'])) {
+                            $ref = (string)$row['external_order_id'];
+                        }
+                        if ($ref !== null && $ref !== '') {
+                            $sync->syncOne($ref);
+                            $processed++;
+                        }
+
+                        // Collecte l'origin pour sync des pickings
+                        $origin = (string)($row['odoo_name'] ?? '');
+                        if ($origin === '' && !empty($row['external_order_id'])) {
+                            $origin = (string)$row['external_order_id'];
+                        }
+                        if ($origin !== '') { $origins[$origin] = true; }
+                    } catch (\Throwable) {
+                        // continue
+                    }
+                }
+            }
+
+            // Rafraîchir les pickings pour chaque origin collecté (mise à jour de la colonne "delivery")
+            if ($origins) {
+                // Création de la table si absente (portable SQLite/MySQL)
+                try {
+                    $this->db->executeStatement(
+                        'CREATE TABLE IF NOT EXISTS odoo_pickings (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            odoo_id INTEGER UNIQUE,
+                            name VARCHAR(64) NOT NULL,
+                            origin VARCHAR(128) NULL,
+                            partner_id INTEGER NULL,
+                            partner_name VARCHAR(255) NULL,
+                            scheduled_date DATETIME NULL,
+                            state VARCHAR(32) NOT NULL,
+                            updated_at DATETIME NULL,
+                            payload_json TEXT NULL
+                        )'
+                    );
+                } catch (\Throwable) {
+                    // Variante MySQL
+                    try {
+                        $this->db->executeStatement(
+                            'CREATE TABLE IF NOT EXISTS odoo_pickings (
+                                id INT AUTO_INCREMENT PRIMARY KEY,
+                                odoo_id INT UNIQUE,
+                                name VARCHAR(64) NOT NULL,
+                                origin VARCHAR(128) NULL,
+                                partner_id INT NULL,
+                                partner_name VARCHAR(255) NULL,
+                                scheduled_date DATETIME NULL,
+                                state VARCHAR(32) NOT NULL,
+                                updated_at DATETIME NULL,
+                                payload_json LONGTEXT NULL
+                            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'
+                        );
+                    } catch (\Throwable) {
+                        // ignore
+                    }
+                }
+
+                $fields = ['id','name','origin','partner_id','scheduled_date','state','write_date'];
+                foreach (array_keys($origins) as $origin) {
+                    try {
+                        $rows = $sales->listPickings([['origin', '=', $origin]], 50, 0, $fields);
+                        if (!is_array($rows)) { continue; }
+                        foreach ($rows as $r) {
+                            $odooId   = (int)($r['id'] ?? 0);
+                            if ($odooId <= 0) { continue; }
+                            $name     = (string)($r['name'] ?? '');
+                            $state    = (string)($r['state'] ?? '');
+                            $schedRaw = (string)($r['scheduled_date'] ?? '');
+                            $scheduled= $schedRaw !== '' ? $schedRaw : null;
+                            $writeRaw = (string)($r['write_date'] ?? '');
+                            $updated  = $writeRaw !== '' ? $writeRaw : null;
+
+                            $partnerId   = null;
+                            $partnerName = null;
+                            if (isset($r['partner_id'])) {
+                                if (is_array($r['partner_id'])) {
+                                    $partnerId   = isset($r['partner_id'][0]) ? (int)$r['partner_id'][0] : null;
+                                    $partnerName = isset($r['partner_id'][1]) ? (string)$r['partner_id'][1] : null;
+                                } elseif (is_int($r['partner_id'])) {
+                                    $partnerId = (int)$r['partner_id'];
+                                }
+                            }
+
+                            $payload = json_encode($r, JSON_UNESCAPED_UNICODE);
+
+                            // UPDATE d'abord
+                            $affected = $this->db->executeStatement(
+                                'UPDATE odoo_pickings
+                                    SET name = ?, origin = ?, partner_id = ?, partner_name = ?, scheduled_date = ?, state = ?, updated_at = ?, payload_json = ?
+                                  WHERE odoo_id = ?',
+                                [$name, $origin, $partnerId, $partnerName, $scheduled, $state, $updated, $payload, $odooId]
+                            );
+                            if ($affected === 0) {
+                                $exists = $this->db->fetchOne('SELECT 1 FROM odoo_pickings WHERE odoo_id = ?', [$odooId]);
+                                if (!$exists) {
+                                    $this->db->executeStatement(
+                                        'INSERT INTO odoo_pickings
+                                            (odoo_id, name, origin, partner_id, partner_name, scheduled_date, state, updated_at, payload_json)
+                                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                                        [$odooId, $name, $origin, $partnerId, $partnerName, $scheduled, $state, $updated, $payload]
+                                    );
+                                }
+                            }
+                        }
+                    } catch (\Throwable) {
+                        // on continue avec les autres origins
+                    }
+                }
+            }
+
+            if ($processed > 0 || $origins) {
+                $this->addFlash('success', 'États commande et livraisons rafraîchis.');
+            } else {
+                $this->addFlash('info', 'Aucune donnée rafraîchie.');
+            }
+
+            // Revenir à la liste avec les mêmes filtres/tri/pagination
+            $qsKeys = ['q','status','source','prepared_by','carrier','tracking','placed_from','placed_to','delivery_state','sort','dir','page','per_page','view'];
+            $qs = [];
+            foreach ($qsKeys as $k) {
+                $v = $request->request->get($k, $request->query->get($k, null));
+                if ($v !== null && $v !== '') { $qs[$k] = $v; }
+            }
+
+            return $this->redirectToRoute('admin_orders_list', $qs);
+        }
+
+
+    #[Route('/admin/orders/statuses', name: 'admin_orders_statuses', methods: ['GET'])]
+    public function statuses(Request $request): Response
+    {
+        if (!$this->isGranted('ROLE_ADMIN') && !$this->isGranted('ROLE_PREPARATEUR')) {
+            throw $this->createAccessDeniedException();
+        }
+
+        $idsRaw = (string) $request->query->get('ids', '');
+        if ($idsRaw === '') {
+            return new JsonResponse([]);
+        }
+
+        $ids = array_values(array_unique(array_filter(array_map(
+            static fn($v) => (int) $v,
+            preg_split('/[,\s]+/', $idsRaw) ?: []
+        ), static fn($v) => $v > 0)));
+
+        if (!$ids) {
+            return new JsonResponse([]);
+        }
+
+        // Charger les ordres minimaux
+        $ph = implode(',', array_fill(0, count($ids), '?'));
+        $orders = $this->db->fetchAllAssociative(
+            "SELECT id, status, odoo_name, external_order_id
+               FROM sales_orders
+              WHERE id IN ($ph)",
+            $ids
+        );
+
+        if (!$orders) {
+            return new JsonResponse([]);
+        }
+
+        // Détermination du meilleur état de préparation via odoo_pickings
+        $bestByOrigin = [];
+        $pickingsTableExists = true;
+        try {
+            $this->db->executeQuery('SELECT 1 FROM odoo_pickings LIMIT 1')->fetchOne();
+        } catch (\Throwable) {
+            $pickingsTableExists = false;
+        }
+
+        if ($pickingsTableExists) {
+            $origins = [];
+            foreach ($orders as $o) {
+                $origin = trim((string)($o['odoo_name'] ?? ''));
+                if ($origin === '') {
+                    $origin = trim((string)($o['external_order_id'] ?? ''));
+                }
+                if ($origin !== '') { $origins[$origin] = true; }
+            }
+
+            if ($origins) {
+                $keys = array_keys($origins);
+                $ph2  = implode(',', array_fill(0, count($keys), '?'));
+                $rows = $this->db->fetchAllAssociative(
+                    "SELECT origin, state FROM odoo_pickings WHERE origin IN ($ph2)",
+                    $keys
+                );
+
+                // Classement de progression
+                $rank = ['cancel'=>-1, 'draft'=>10, 'waiting'=>20, 'confirmed'=>30, 'assigned'=>40, 'done'=>50];
+
+                foreach ($rows as $r) {
+                    $o  = (string)($r['origin'] ?? '');
+                    $st = strtolower((string)($r['state'] ?? ''));
+                    if ($o === '' || !isset($rank[$st])) { continue; }
+                    $cur = $bestByOrigin[$o] ?? null;
+                    if ($cur === null || $rank[$st] > $rank[$cur]) {
+                        $bestByOrigin[$o] = $st;
+                    }
+                }
+            }
+        }
+
+        $out = [];
+        foreach ($orders as $o) {
+            $id     = (int) $o['id'];
+            $status = (string) ($o['status'] ?? '');
+            $origin = trim((string)($o['odoo_name'] ?? ''));
+            if ($origin === '') {
+                $origin = trim((string)($o['external_order_id'] ?? ''));
+            }
+            $delivery = ($origin !== '' && isset($bestByOrigin[$origin])) ? $bestByOrigin[$origin] : null;
+
+            $out[] = [
+                'id' => $id,
+                'status' => $status,
+                'delivery_state' => $delivery,
+            ];
+        }
+
+        return new JsonResponse($out);
     }
 }

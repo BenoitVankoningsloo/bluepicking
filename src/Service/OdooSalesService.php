@@ -1,5 +1,4 @@
 <?php
-/** @noinspection ALL */
 declare(strict_types=1);
 
 namespace App\Service;
@@ -188,7 +187,7 @@ final class OdooSalesService
      * Pousse les quantités préparées LOCALES vers Odoo **sur stock.move** (pas move.line),
      * puis valide le picking (gère immediate transfer & backorder en automatique).
      */
-    public function pushPreparedAndValidate(Connection $db, int $localOrderId): void
+    public function pushPreparedAndValidate(Connection $db, int $localOrderId, bool $createBackorder = true): void
     {
         $row = $db->fetchAssociative('SELECT odoo_sale_order_id, odoo_name FROM sales_orders WHERE id=?', [$localOrderId]);
         if (!$row || !$row['odoo_sale_order_id']) {
@@ -256,43 +255,107 @@ final class OdooSalesService
         }
 
         // 5) Moves du picking (on veut id, product_id, product_uom_qty, quantity_done si dispo)
+        $hasMoveQtyDone = $this->modelHasField('stock.move','quantity_done');
         $fields = ['id','product_id','product_uom','product_uom_qty','move_line_ids'];
-        if ($this->modelHasField('stock.move','quantity_done')) {
-            $fields[] = 'quantity_done';
-        }
+        if ($hasMoveQtyDone) { $fields[] = 'quantity_done'; }
         $moves = $this->rpc->callKW('stock.move', 'search_read', [[['picking_id', '=', $pickingId]]], [
             'fields' => $fields,
             'limit'  => 2000
         ]);
 
-        // Index par product_id
-        $byProduct = [];
+        // Index: liste de moves par produit + restant par move et par produit
+        $movesByPid = [];
+        $remainingByMoveId = [];
+        $remainingByPid = [];
+
+        // somme done depuis lines si besoin
+        $allMlIds = [];
         foreach ($moves as $m) {
-            $pid = $this->idFromMany2One($m['product_id'] ?? null);
-            if ($pid && !isset($byProduct[$pid])) {
-                $byProduct[$pid] = $m;
+            if (!empty($m['move_line_ids'])) {
+                foreach ($m['move_line_ids'] as $mlId) { $allMlIds[] = $mlId; }
             }
         }
+        $doneFromLines = $allMlIds ? $this->sumMoveLineDoneByProduct($allMlIds) : [];
 
-        // 6) Appliquer les quantités sur **stock.move**
-        $hasMoveQtyDone = $this->modelHasField('stock.move','quantity_done');
-        foreach ($target as $pid => $qty) {
-            if (!isset($byProduct[$pid])) { continue; }
-            $m = $byProduct[$pid];
-            $moveId = (int)$m['id'];
+        foreach ($moves as $m) {
+            $pid = $this->idFromMany2One($m['product_id'] ?? null);
+            if (!$pid) { continue; }
 
-            if ($hasMoveQtyDone) {
-                // a) Champ moderne : écrire quantity_done = qty préparée
-                $this->rpc->callKW('stock.move','write', [[$moveId], ['quantity_done' => (float)$qty]]);
+            $demanded = (float)($m['product_uom_qty'] ?? 0.0);
+            $done = 0.0;
+            if ($hasMoveQtyDone && isset($m['quantity_done'])) {
+                $done = (float)$m['quantity_done'];
             } else {
-                // b) Fallback legacy : écraser product_uom_qty par la quantité préparée
-                // (certains schémas anciens valident sur la quantité de move)
-                $this->rpc->callKW('stock.move','write', [[$moveId], ['product_uom_qty' => (float)$qty]]);
+                // valeur agrégée produit si le champ n'existe pas: on répartira par move via les lines en mode additif
+                $done = 0.0;
             }
+
+            $remaining = max(0.0, $demanded - $done);
+            $movesByPid[$pid][] = $m;
+            $remainingByMoveId[(int)$m['id']] = $remaining;
+            $remainingByPid[$pid] = ($remainingByPid[$pid] ?? 0.0) + $remaining;
+        }
+
+        // 6) Appliquer les quantités plafonnées et écrire quantity_done (ou move lines) en DISTRIBUANT sur tous les moves
+        $hadRemainingAfterWrite = false;
+        foreach ($target as $pid => $qty) {
+            if (empty($movesByPid[$pid])) { continue; }
+
+            // quantité totale autorisée pour ce produit
+            $allowedPid = (float)($remainingByPid[$pid] ?? 0.0);
+            $toAllocate = (float)min((float)$qty, $allowedPid);
+            if ($toAllocate < 0) { $toAllocate = 0.0; }
+
+            foreach ($movesByPid[$pid] as $m) {
+                if ($toAllocate <= 1e-9) { break; }
+
+                $moveId = (int)$m['id'];
+                $allowedMove = (float)($remainingByMoveId[$moveId] ?? 0.0);
+                if ($allowedMove <= 1e-9) { continue; }
+
+                $alloc = (float)min($toAllocate, $allowedMove);
+                $toAllocate -= $alloc;
+
+                // quantité actuelle "done" si dispo
+                $currentDone = ($hasMoveQtyDone && isset($m['quantity_done'])) ? (float)$m['quantity_done'] : null;
+
+                try {
+                    if ($currentDone !== null) {
+                        $newVal = $currentDone + $alloc;
+                        $this->rpc->callKW('stock.move','write', [[$moveId], ['quantity_done' => $newVal]]);
+                    } else {
+                        // fallback: additif sur move lines
+                        $this->updateMoveLinesQuantityDone($moveId, $alloc);
+                    }
+                } catch (\Throwable) {
+                    // repli move lines si écriture sur move échoue
+                    $this->updateMoveLinesQuantityDone($moveId, $alloc);
+                }
+
+                // mettre à jour le restant du move
+                $remainingByMoveId[$moveId] = max(0.0, $allowedMove - $alloc);
+            }
+
+            // S'il reste quelque chose non alloué, c'est du restant → backorder
+            if ($toAllocate > 1e-9) { $hadRemainingAfterWrite = true; }
         }
 
         // 7) Valider le picking
-        $res = $this->rpc->callKW('stock.picking', 'button_validate', [[$pickingId]]);
+        try {
+            $res = $this->rpc->callKW('stock.picking', 'button_validate', [[$pickingId]]);
+        } catch (\Throwable $e) {
+            // Fallback: en cas d'erreur (ex. “unhashable type: 'list'”/stocks impossibles),
+            // on force la création d'un reliquat via le wizard backorder.
+            try {
+                $ctx = ['active_model' => 'stock.picking', 'active_ids' => [$pickingId], 'active_id' => $pickingId];
+                $wizId = $this->rpc->callKW('stock.backorder.confirmation','create', [[]], ['context' => $ctx]);
+                $this->rpc->callKW('stock.backorder.confirmation','process', [[$wizId]], ['context' => $ctx]);
+                return; // reliquat créé, on termine proprement
+            } catch (\Throwable) {
+                // Si le fallback échoue, on relance l'erreur initiale pour diagnostic
+                throw $e;
+            }
+        }
 
         // a) Immediate transfer wizard
         if (is_array($res) && ($res['res_model'] ?? '') === 'stock.immediate.transfer') {
@@ -306,15 +369,24 @@ final class OdooSalesService
             // Une fois traité, le picking passe en done, sinon on continue
         }
 
-        // b) Backorder wizard → on **accepte** le backorder pour finir en done
+        // b) Backorder wizard → accepter (créer un reliquat) ou annuler (pas de reliquat)
         if (is_array($res) && ($res['res_model'] ?? '') === 'stock.backorder.confirmation') {
             if (!empty($res['res_id'])) {
-                $this->rpc->callKW('stock.backorder.confirmation','process', [[$res['res_id']]]);
+                $this->rpc->callKW('stock.backorder.confirmation', $createBackorder ? 'process' : 'process_cancel', [[$res['res_id']]]);
             } else {
                 // Recréation au besoin
                 $ctx = ['active_model' => 'stock.picking', 'active_ids' => [$pickingId], 'active_id' => $pickingId];
                 $wizId = $this->rpc->callKW('stock.backorder.confirmation','create', [[]], ['context' => $ctx]);
+                $this->rpc->callKW('stock.backorder.confirmation', $createBackorder ? 'process' : 'process_cancel', [[$wizId]], ['context' => $ctx]);
+            }
+        } elseif ($createBackorder && $hadRemainingAfterWrite) {
+            // Pas de wizard retourné mais des restants: forcer la création d'un backorder
+            try {
+                $ctx = ['active_model' => 'stock.picking', 'active_ids' => [$pickingId], 'active_id' => $pickingId];
+                $wizId = $this->rpc->callKW('stock.backorder.confirmation','create', [[]], ['context' => $ctx]);
                 $this->rpc->callKW('stock.backorder.confirmation','process', [[$wizId]], ['context' => $ctx]);
+            } catch (\Throwable) {
+                // on n'empêche pas la suite si le fallback échoue silencieusement
             }
         }
     }
@@ -370,10 +442,120 @@ final class OdooSalesService
         return null;
     }
 
+    /**
+     * Retourne, pour une vente (id numérique ou name), le restant à préparer par product_id,
+     * calculé comme somme(product_uom_qty des moves) - somme(des quantités déjà faites).
+     */
+    public function getRemainingByProductForOrder(int|string $idOrName): array
+    {
+        $data = $this->fetchSaleOrder($idOrName);
+        $pickings = (array)($data['pickings'] ?? []);
+        if (!$pickings) { return []; }
+
+        $pickingIds = [];
+        foreach ($pickings as $p) {
+            $pid = (int)($p['id'] ?? 0);
+            if ($pid > 0) { $pickingIds[] = $pid; }
+        }
+        if (!$pickingIds) { return []; }
+
+        // Lire les moves de tous les pickings
+        $hasMoveQtyDone = $this->modelHasField('stock.move','quantity_done');
+        $fields = ['id','product_id','product_uom_qty','move_line_ids'];
+        if ($hasMoveQtyDone) { $fields[] = 'quantity_done'; }
+
+        $moves = $this->rpc->callKW('stock.move','search_read', [[['picking_id','in',$pickingIds]]], [
+            'fields' => $fields,
+            'limit'  => 5000
+        ]);
+
+        $demandedByPid = [];
+        $doneByPid = [];
+
+        $allMlIds = [];
+        foreach ($moves as $m) {
+            $pid = $this->idFromMany2One($m['product_id'] ?? null);
+            if ($pid) {
+                $demandedByPid[$pid] = ($demandedByPid[$pid] ?? 0.0) + (float)($m['product_uom_qty'] ?? 0.0);
+            }
+            if (!empty($m['move_line_ids'])) {
+                foreach ($m['move_line_ids'] as $mlId) { $allMlIds[] = $mlId; }
+            }
+            if ($hasMoveQtyDone && isset($m['quantity_done']) && $pid) {
+                $doneByPid[$pid] = ($doneByPid[$pid] ?? 0.0) + (float)$m['quantity_done'];
+            }
+        }
+
+        if (!$hasMoveQtyDone && $allMlIds) {
+            $fromLines = $this->sumMoveLineDoneByProduct($allMlIds);
+            foreach ($fromLines as $pid => $q) {
+                $doneByPid[(int)$pid] = ($doneByPid[(int)$pid] ?? 0.0) + (float)$q;
+            }
+        }
+
+        $remaining = [];
+        foreach ($demandedByPid as $pid => $dem) {
+            $done = (float)($doneByPid[$pid] ?? 0.0);
+            $rest = $dem - $done;
+            if ($rest < 0) { $rest = 0.0; }
+            $remaining[(int)$pid] = $rest;
+        }
+        return $remaining;
+    }
+
+    /**
+     * Met à jour la quantité réalisée via stock.move.line (qty_done/quantity_done) pour un move donné.
+     * - Ajoute la quantité passée à la valeur existante (mode additif).
+     * - Choisit la première move line existante, sinon en crée une minimale.
+     */
+    private function updateMoveLinesQuantityDone(int $moveId, float $qty): void
+    {
+        // Lire les move lines existantes
+        $mls = [];
+        try {
+            $mls = $this->rpc->callKW('stock.move.line','search_read', [[['move_id','=', $moveId]]], [
+                'fields' => ['id','qty_done','quantity_done'],
+                'limit'  => 2000
+            ]);
+        } catch (\Throwable) {
+            $mls = [];
+        }
+
+        // Déterminer le champ accepté (préférence pour qty_done)
+        $field = 'qty_done';
+        $current = 0.0;
+        if ($mls && isset($mls[0])) {
+            $first = $mls[0];
+            if (array_key_exists('quantity_done', $first) && !array_key_exists('qty_done', $first)) {
+                $field = 'quantity_done';
+                $current = (float)($first['quantity_done'] ?? 0.0);
+            } else {
+                $current = (float)($first['qty_done'] ?? 0.0);
+            }
+        }
+
+        if ($mls) {
+            $lineId = (int)($mls[0]['id'] ?? 0);
+            if ($lineId > 0) {
+                $newVal = $current + (float)$qty;
+                if ($newVal < 0) { $newVal = 0.0; }
+                $this->rpc->callKW('stock.move.line','write', [[$lineId], [$field => $newVal]]);
+                return;
+            }
+        }
+
+        // Créer une move line minimale (Odoo peut requérir des champs supplémentaires selon configuration)
+        try {
+            $this->rpc->callKW('stock.move.line','create', [['move_id' => $moveId, $field => (float)$qty]]);
+        } catch (\Throwable) {
+            // En dernier recours: on ne bloque pas, mais on laisse l’erreur silencieuse
+        }
+    }
+
     public function getSaleOrderState(int $saleOrderId): ?string
     {
-    $r = $this->rpc->read('sale.order', [$saleOrderId], ['state']);
-    return $r[0]['state'] ?? null;
+        $r = $this->rpc->read('sale.order', [$saleOrderId], ['state']);
+        return $r[0]['state'] ?? null;
     }
 
     /** Récupère un picking + ses moves, avec stocks produits (forecast/on hand) et picked actuel */
@@ -415,15 +597,84 @@ final class OdooSalesService
         $prodStocks = [];
         if ($pids) {
             $ids = array_keys($pids);
-            $prods = $this->rpc->read('product.product', $ids, ['qty_available','virtual_available','default_code','name','uom_id']);
+
+            // Lecture produits: ajoute barcode pour affichage et infos UoM/stock globaux
+            $prods = $this->rpc->read('product.product', $ids, ['qty_available','virtual_available','default_code','barcode','name','uom_id']);
             foreach ($prods as $pr) {
                 $prodStocks[(int)$pr['id']] = [
                     'qty_available'     => (float)($pr['qty_available'] ?? 0.0),
                     'virtual_available' => (float)($pr['virtual_available'] ?? 0.0),
                     'default_code'      => (string)($pr['default_code'] ?? ''),
+                    'barcode'           => (string)($pr['barcode'] ?? ''),
                     'name'              => (string)($pr['name'] ?? ''),
-                    'uom'               => is_array($pr['uom_id'] ?? null) ? ($pr['uom_id'][1] ?? '') : '',
+                    'uom'               => is_array(($pr['uom_id'] ?? null)) ? ($pr['uom_id'][1] ?? '') : '',
+                    // 'locations' sera ajouté après lecture des quants
                 ];
+            }
+
+            // Lecture des quants par produit pour afficher le stock dispo par emplacement
+            try {
+                $domain = [['product_id', 'in', $ids], ['quantity', '>', 0]];
+                $quants = $this->rpc->callKW('stock.quant', 'search_read', [$domain], [
+                    'fields' => ['product_id','location_id','available_quantity','quantity'],
+                    'limit'  => 5000
+                ]);
+
+                // 1) Agréger par produit et par emplacement + collecter les IDs d'emplacement
+                $rawByPidLoc = [];
+                $locIds = [];
+                foreach ($quants as $q) {
+                    $pid = is_array($q['product_id'] ?? null) ? ($q['product_id'][0] ?? null) : ($q['product_id'] ?? null);
+                    if (!$pid) { continue; }
+                    $locId = is_array($q['location_id'] ?? null) ? ($q['location_id'][0] ?? null) : ($q['location_id'] ?? null);
+                    if (!$locId) { continue; }
+                    $qty = isset($q['available_quantity']) ? (float)$q['available_quantity'] : (float)($q['quantity'] ?? 0.0);
+                    if ($qty <= 0) { continue; }
+
+                    $rawByPidLoc[(int)$pid][$locId] = ($rawByPidLoc[(int)$pid][$locId] ?? 0.0) + $qty;
+                    $locIds[(int)$locId] = true;
+                }
+
+                // 2) Lire les infos d'emplacement (complete_name) pour déduire l'entrepôt (préfixe)
+                $locInfo = [];
+                if ($locIds) {
+                    $locRows = $this->rpc->read('stock.location', array_keys($locIds), ['id','name','complete_name']);
+                    foreach ($locRows as $lr) {
+                        $lid = (int)($lr['id'] ?? 0);
+                        if ($lid <= 0) { continue; }
+                        $full = (string)($lr['complete_name'] ?? ($lr['name'] ?? ''));
+                        $locInfo[$lid] = $full !== '' ? $full : ('Loc#' . $lid);
+                    }
+                }
+
+                // 3) Construire la structure finale avec 'name' et 'wh' (warehouse)
+                $byPidLoc = [];
+                foreach ($rawByPidLoc as $pid => $locs) {
+                    foreach ($locs as $lid => $qty) {
+                        $full = $locInfo[(int)$lid] ?? ('Loc#' . (int)$lid);
+                        $wh = $full;
+                        $pos = strpos($full, '/');
+                        if ($pos !== false) {
+                            $wh = substr($full, 0, $pos);
+                        }
+                        $byPidLoc[(int)$pid][] = [
+                            'name' => $full,
+                            'wh'   => $wh,
+                            'qty'  => $qty,
+                        ];
+                    }
+                }
+
+                // 4) Tri par quantité décroissante pour lisibilité, et attacher au produit
+                foreach ($byPidLoc as $pid => $locs) {
+                    usort($locs, static fn(array $a, array $b) => ($b['qty'] <=> $a['qty']));
+                    if (!isset($prodStocks[(int)$pid])) {
+                        $prodStocks[(int)$pid] = [];
+                    }
+                    $prodStocks[(int)$pid]['locations'] = array_values($locs);
+                }
+            } catch (\Throwable) {
+                // silencieux: si indisponible, on continue sans détail par emplacement
             }
         }
 
@@ -470,7 +721,7 @@ final class OdooSalesService
                 }
             }
 
-            $stocks  = $pid && isset($prodStocks[(int)$pid]) ? $prodStocks[(int)$pid] : ['qty_available'=>0.0,'virtual_available'=>0.0,'default_code'=>'','name'=>'','uom'=>''];
+            $stocks  = $pid && isset($prodStocks[(int)$pid]) ? $prodStocks[(int)$pid] : ['qty_available'=>0.0,'virtual_available'=>0.0,'default_code'=>'','barcode'=>'','name'=>'','uom'=>'','locations'=>[]];
             $ordered = $pid && isset($orderedByPid[(int)$pid]) ? (float)$orderedByPid[(int)$pid] : null;
 
             // picked booléen venant d’Odoo si disponible, sinon fallback indicatif
@@ -491,6 +742,9 @@ final class OdooSalesService
                 'picked_qty'       => $pickedQty,        // quantité déjà faite
                 'forecast'         => (float)$stocks['virtual_available'],
                 'on_hand'          => (float)$stocks['qty_available'],
+                'default_code'     => (string)$stocks['default_code'],
+                'barcode'          => (string)$stocks['barcode'],
+                'locations'        => is_array($stocks['locations'] ?? null) ? $stocks['locations'] : [],
             ];
         }
 
@@ -500,12 +754,9 @@ final class OdooSalesService
     /** Met à jour les quantités “picked” sans valider le picking */
     public function setPickedQuantities(int $pickingId, array $qtyByProductId): void
     {
-        $hasMoveQtyDone = $this->modelHasField('stock.move','quantity_done');
-        $fields = ['id','product_id'];
-        if ($hasMoveQtyDone) { $fields[] = 'quantity_done'; }
-
+        // Lecture minimale des moves
         $moves = $this->rpc->callKW('stock.move','search_read', [[['picking_id','=', $pickingId]]], [
-            'fields' => $fields,
+            'fields' => ['id','product_id'],
             'limit'  => 2000
         ]);
 
@@ -523,11 +774,10 @@ final class OdooSalesService
             if ($pid <= 0 || !isset($byProduct[$pid])) { continue; }
             $moveId = (int)$byProduct[$pid]['id'];
 
-            if ($hasMoveQtyDone) {
+            try {
                 $this->rpc->callKW('stock.move','write', [[$moveId], ['quantity_done' => $qty]]);
-            } else {
-                // fallback legacy
-                $this->rpc->callKW('stock.move','write', [[$moveId], ['product_uom_qty' => $qty]]);
+            } catch (\Throwable $e) {
+                $this->updateMoveLinesQuantityDone($moveId, $qty);
             }
         }
     }
@@ -535,13 +785,9 @@ final class OdooSalesService
     /** Fixe les quantités “picked” par product_id et valide le picking (wizard inclus) */
     public function setPickedAndValidatePicking(int $pickingId, array $qtyByProductId): void
     {
-        // Moves du picking
-        $hasMoveQtyDone = $this->modelHasField('stock.move','quantity_done');
-        $fields = ['id','product_id','product_uom_qty'];
-        if ($hasMoveQtyDone) { $fields[] = 'quantity_done'; }
-
+        // Moves du picking (lecture minimale)
         $moves = $this->rpc->callKW('stock.move', 'search_read', [[['picking_id', '=', $pickingId]]], [
-            'fields' => $fields,
+            'fields' => ['id','product_id'],
             'limit'  => 2000
         ]);
 
@@ -554,18 +800,17 @@ final class OdooSalesService
             }
         }
 
-        // Appliquer les quantités
+        // Appliquer les quantités avec repli sur move lines si besoin
         foreach ($qtyByProductId as $pid => $qty) {
             $pid = (int)$pid;
             $qty = (float)$qty;
             if ($pid <= 0 || !isset($byProduct[$pid])) { continue; }
             $moveId = (int)$byProduct[$pid]['id'];
 
-            if ($hasMoveQtyDone) {
+            try {
                 $this->rpc->callKW('stock.move','write', [[$moveId], ['quantity_done' => $qty]]);
-            } else {
-                // fallback legacy
-                $this->rpc->callKW('stock.move','write', [[$moveId], ['product_uom_qty' => $qty]]);
+            } catch (\Throwable $e) {
+                $this->updateMoveLinesQuantityDone($moveId, $qty);
             }
         }
 
@@ -590,6 +835,121 @@ final class OdooSalesService
                 $ctx = ['active_model' => 'stock.picking', 'active_ids' => [$pickingId], 'active_id' => $pickingId];
                 $wizId = $this->rpc->callKW('stock.backorder.confirmation','create', [[]], ['context' => $ctx]);
                 $this->rpc->callKW('stock.backorder.confirmation','process', [[$wizId]], ['context' => $ctx]);
+            }
+        }
+    }
+
+    /**
+     * Lit product.product pour une liste d'IDs et retourne un map id => infos (barcode, default_code, name, uom, stocks).
+     * Enrichit avec les emplacements de stock (stock.quant → stock.location).
+     */
+    public function getProductsInfo(array $ids): array
+    {
+        if (empty($ids)) { return []; }
+        $ids = array_values(array_unique(array_map('intval', $ids)));
+
+        // Produits
+        $rows = $this->rpc->read('product.product', $ids, ['id','default_code','barcode','name','uom_id','qty_available','virtual_available']);
+        $out = [];
+        foreach ($rows as $r) {
+            $pid = (int)($r['id'] ?? 0);
+            if ($pid <= 0) { continue; }
+            $out[$pid] = [
+                'default_code'      => (string)($r['default_code'] ?? ''),
+                'barcode'           => (string)($r['barcode'] ?? ''),
+                'name'              => (string)($r['name'] ?? ''),
+                'uom'               => is_array($r['uom_id'] ?? null) ? ($r['uom_id'][1] ?? '') : '',
+                'qty_available'     => (float)($r['qty_available'] ?? 0.0),
+                'virtual_available' => (float)($r['virtual_available'] ?? 0.0),
+                'locations'         => [], // rempli ci-dessous
+            ];
+        }
+
+        // Quants par produit → emplacements
+        try {
+            $domain = [['product_id', 'in', $ids], ['quantity', '>', 0]];
+            $quants = $this->rpc->callKW('stock.quant', 'search_read', [$domain], [
+                'fields' => ['product_id','location_id','available_quantity','quantity'],
+                'limit'  => 5000
+            ]);
+
+            // Agrégats et collect des location_ids
+            $rawByPidLoc = [];
+            $locIds = [];
+            foreach ($quants as $q) {
+                $pid = is_array($q['product_id'] ?? null) ? ($q['product_id'][0] ?? null) : ($q['product_id'] ?? null);
+                if (!$pid) { continue; }
+                $locId = is_array($q['location_id'] ?? null) ? ($q['location_id'][0] ?? null) : ($q['location_id'] ?? null);
+                if (!$locId) { continue; }
+                $qty = isset($q['available_quantity']) ? (float)$q['available_quantity'] : (float)($q['quantity'] ?? 0.0);
+                if ($qty <= 0) { continue; }
+
+                $rawByPidLoc[(int)$pid][$locId] = ($rawByPidLoc[(int)$pid][$locId] ?? 0.0) + $qty;
+                $locIds[(int)$locId] = true;
+            }
+
+            // Lire stock.location pour récupérer le complete_name et en déduire l'entrepôt
+            $locInfo = [];
+            if ($locIds) {
+                $locRows = $this->rpc->read('stock.location', array_keys($locIds), ['id','name','complete_name']);
+                foreach ($locRows as $lr) {
+                    $lid = (int)($lr['id'] ?? 0);
+                    if ($lid <= 0) { continue; }
+                    $full = (string)($lr['complete_name'] ?? ($lr['name'] ?? ''));
+                    $locInfo[$lid] = $full !== '' ? $full : ('Loc#' . $lid);
+                }
+            }
+
+            // Construire la liste triée d'emplacements {wh, name, qty}
+            foreach ($rawByPidLoc as $pid => $locs) {
+                $list = [];
+                foreach ($locs as $lid => $qty) {
+                    $full = $locInfo[(int)$lid] ?? ('Loc#' . (int)$lid);
+                    $wh = $full;
+                    $pos = strpos($full, '/');
+                    if ($pos !== false) {
+                        $wh = substr($full, 0, $pos);
+                    }
+                    $list[] = [
+                        'wh'  => $wh,
+                        'name'=> $full,
+                        'qty' => $qty,
+                    ];
+                }
+                usort($list, static fn(array $a, array $b) => ($b['qty'] <=> $a['qty']));
+                if (!isset($out[(int)$pid])) {
+                    $out[(int)$pid] = [];
+                }
+                $out[(int)$pid]['locations'] = $list;
+            }
+        } catch (\Throwable) {
+            // silencieux: si indispo, on laisse locations vide
+        }
+
+        return $out;
+    }
+
+    /**
+     * Force la création/validation d'un reliquat (stock.backorder.confirmation) pour tous les pickings
+     * ouverts (non done/cancel) d'une vente (par id numérique ou par nom).
+     */
+    public function forceBackorderForOrder(int|string $idOrName): void
+    {
+        $data = $this->fetchSaleOrder($idOrName);
+        $pickings = (array)($data['pickings'] ?? []);
+        if (!$pickings) { return; }
+
+        foreach ($pickings as $p) {
+            $pid = (int)($p['id'] ?? 0);
+            $state = (string)($p['state'] ?? '');
+            if ($pid > 0 && !in_array($state, ['done','cancel'], true)) {
+                $ctx = ['active_model' => 'stock.picking', 'active_ids' => [$pid], 'active_id' => $pid];
+                try {
+                    $wizId = $this->rpc->callKW('stock.backorder.confirmation','create', [[]], ['context' => $ctx]);
+                    $this->rpc->callKW('stock.backorder.confirmation','process', [[$wizId]], ['context' => $ctx]);
+                } catch (\Throwable) {
+                    // on continue avec les suivants
+                }
             }
         }
     }

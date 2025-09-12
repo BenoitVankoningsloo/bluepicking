@@ -1,12 +1,4 @@
-<?php /** @noinspection PhpFieldAssignmentTypeMismatchInspection */
-/** @noinspection ALL */
-/** @noinspection PhpFieldAssignmentTypeMismatchInspection */
-/** @noinspection PhpFieldAssignmentTypeMismatchInspection */
-/** @noinspection PhpFieldAssignmentTypeMismatchInspection */
-/** @noinspection PhpFieldAssignmentTypeMismatchInspection */
-/** @noinspection ALL */
-/** @noinspection PhpFieldAssignmentTypeMismatchInspection */
-
+<?php
 declare(strict_types=1);
 
 namespace App\Entity;
@@ -31,12 +23,8 @@ class ResetPasswordRequest implements ResetPasswordRequestInterface
     #[ORM\JoinColumn(nullable: false)]
     private ?User $user;
 
-    /** @noinspection PhpFieldAssignmentTypeMismatchInspection */
-    public function __construct(object $user, DateTimeInterface $expiresAt, string $selector, string $hashedToken)
+    public function __construct(User $user, DateTimeInterface $expiresAt, string $selector, string $hashedToken)
     {
-        /** @noinspection PhpFieldAssignmentTypeMismatchInspection */
-        /** @noinspection PhpFieldAssignmentTypeMismatchInspection */
-        /** @noinspection PhpFieldAssignmentTypeMismatchInspection */
         $this->user = $user;
         $this->initialize($expiresAt, $selector, $hashedToken);
     }
@@ -46,7 +34,7 @@ class ResetPasswordRequest implements ResetPasswordRequestInterface
         return $this->id;
     }
 
-    public function getUser(): object
+    public function getUser(): User
     {
         return $this->user;
     }

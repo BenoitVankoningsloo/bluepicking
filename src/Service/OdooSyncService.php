@@ -1,19 +1,16 @@
 <?php
-/** @noinspection ALL */
 declare(strict_types=1);
 
 namespace App\Service;
 
 use Doctrine\DBAL\Connection;
 use Psr\Log\LoggerInterface;
-use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 final class OdooSyncService
 {
     public function __construct(
         private readonly Connection $db,
         private readonly OdooSalesService $sales,
-        private readonly HttpClientInterface $http,
         private readonly LoggerInterface $logger,
     ) {}
 

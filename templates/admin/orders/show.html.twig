@@ -63,7 +63,7 @@
             <dd class="col-7">
               {% if pickings is defined and pickings %}
                 {% for p in pickings %}
-                  <a href="{{ path('admin_delivery_show', {id: p.odoo_id}) }}"><code>{{ p.name }}</code></a>{% if not loop.last %}, {% endif %}
+                  <code>{{ p.name }}</code>{% if not loop.last %}, {% endif %}
                 {% endfor %}
               {% else %}—{% endif %}
             </dd>

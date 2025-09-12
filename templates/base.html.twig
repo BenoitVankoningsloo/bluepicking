@@ -29,7 +29,6 @@
             {% if is_granted('ROLE_ADMIN') %}
               <li class="nav-item"><a class="nav-link" href="{{ path('admin_users') }}">Gestion des utilisateurs</a></li>
               <li class="nav-item"><a class="nav-link" href="{{ path('admin_contacts') }}">Messages reçus</a></li>
-              <li class="nav-item"><a class="nav-link" href="{{ path('admin_deliveries_list') }}">Ordres de livraison</a></li>
               {% include '_partials/admin_nav_items.html.twig' %}
             {% endif %}
           </ul>

@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace App\Controller\Admin;
 
+use App\Service\OdooSalesService;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Exception;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -23,7 +24,7 @@ final class OrderShowController extends AbstractController
      * @throws Exception
      */
     #[Route('/admin/orders/{id<\\d+>}', name: 'admin_orders_show', methods: ['GET'])]
-    public function __invoke(int $id): Response
+    public function __invoke(int $id, OdooSalesService $odooSvc): Response
     {
         if (!$this->isGranted('ROLE_ADMIN') && !$this->isGranted('ROLE_PREPARATEUR')) {
             throw $this->createAccessDeniedException();
@@ -83,10 +84,10 @@ final class OrderShowController extends AbstractController
             }
         }
 
-        // Pickings liés (via origin = odoo_name ou external_order_id)
+        // Pickings liés (via origin = odoo_name ou external_order_id), avec fallback live depuis Odoo
         $pickings = [];
+        // 1) Lecture locale (si la table existe)
         try {
-            // Vérifie existence table
             $this->db->executeQuery('SELECT 1 FROM odoo_pickings LIMIT 1')->fetchOne();
             $originRef = (string)($o['odoo_name'] ?? '');
             if ($originRef === '' && !empty($o['external_order_id'])) {
@@ -100,6 +101,65 @@ final class OrderShowController extends AbstractController
             }
         } catch (Throwable) {
             $pickings = [];
+        }
+
+        // 2) Complément via Odoo (comme la page de préparation) pour garantir l’affichage
+        try {
+            $byId = [];
+            foreach ($pickings as $p) {
+                $oid = isset($p['odoo_id']) ? (int)$p['odoo_id'] : 0;
+                if ($oid > 0) { $byId[$oid] = true; }
+            }
+
+            // Référence SO: id Odoo si dispo, sinon name, sinon external_order_id
+            $soRef = null;
+            if (!empty($o['odoo_sale_order_id'])) {
+                $soRef = (int)$o['odoo_sale_order_id'];
+            } elseif (!empty($o['odoo_name'])) {
+                $soRef = (string)$o['odoo_name'];
+            } elseif (!empty($o['external_order_id'])) {
+                $soRef = (string)$o['external_order_id'];
+            }
+
+            // a) Via sale.order (picking_ids) si possible
+            if ($soRef !== null && $soRef !== '') {
+                try {
+                    $soData = $odooSvc->fetchSaleOrder($soRef); // retourne pickings avec id/name/state/scheduled_date le cas échéant
+                    $soPickings = (array)($soData['pickings'] ?? []);
+                    foreach ($soPickings as $pk) {
+                        $pid = (int)($pk['id'] ?? 0);
+                        if ($pid <= 0 || isset($byId[$pid])) { continue; }
+                        $pickings[] = [
+                            'odoo_id'        => $pid,
+                            'name'           => (string)($pk['name'] ?? ($pid ?: '')),
+                            'state'          => (string)($pk['state'] ?? ''),
+                            'scheduled_date' => $pk['scheduled_date'] ?? null,
+                        ];
+                        $byId[$pid] = true;
+                    }
+                } catch (Throwable) {
+                    // on tente le fallback par origin
+                }
+            }
+
+            // b) Fallback par origin (listPickings)
+            $origin = (string)($o['odoo_name'] ?? ($o['external_order_id'] ?? ''));
+            if ($origin !== '') {
+                $rows = $odooSvc->listPickings([['origin', '=', $origin]], 20, 0, ['id','name','state','scheduled_date','origin']);
+                foreach ($rows as $rowPk) {
+                    $pid = (int)($rowPk['id'] ?? 0);
+                    if ($pid <= 0 || isset($byId[$pid])) { continue; }
+                    $pickings[] = [
+                        'odoo_id'        => $pid,
+                        'name'           => (string)($rowPk['name'] ?? ($pid ?: '')),
+                        'state'          => (string)($rowPk['state'] ?? ''),
+                        'scheduled_date' => $rowPk['scheduled_date'] ?? null,
+                    ];
+                    $byId[$pid] = true;
+                }
+            }
+        } catch (Throwable) {
+            // silencieux: on garde au moins les données locales si disponibles
         }
 
         return $this->render('admin/orders/show.html.twig', [

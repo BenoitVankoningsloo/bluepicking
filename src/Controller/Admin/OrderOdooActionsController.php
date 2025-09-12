@@ -207,20 +207,100 @@ final class OrderOdooActionsController extends AbstractController
             return $this->redirectToRoute('admin_orders_process', ['id'=>$id]);
         }
 
-        // Enregistre prepared_qty postées
-        $prepared = $req->request->all('prepared');
+        // Pré-validation bloquante: refuse si la quantité saisie dépasse le restant à préparer
+        $prepared = (array)$req->request->all('prepared'); // line_id => qty
         if ($prepared) {
+            // 1) Rassembler les line_ids et récupérer odoo_product_id
+            $lineIds = [];
             foreach ($prepared as $lineId => $qty) {
-                $q = max(0, (float)$qty);
+                if (is_numeric($lineId)) { $lineIds[] = (int)$lineId; }
+            }
+
+            $preparedByPid = [];
+            $namesByPid = [];
+            if ($lineIds) {
+                $placeholders = implode(',', array_fill(0, count($lineIds), '?'));
+                $rows = $this->db->fetchAllAssociative(
+                    'SELECT id, odoo_product_id, name FROM sales_order_lines WHERE order_id = ? AND id IN ('.$placeholders.')',
+                    array_merge([$id], $lineIds)
+                );
+                $pidByLine = [];
+                foreach ($rows as $r) {
+                    $lid = (int)$r['id'];
+                    $pid = (int)($r['odoo_product_id'] ?? 0);
+                    $pidByLine[$lid] = $pid;
+                    if ($pid > 0 && !isset($namesByPid[$pid])) {
+                        $namesByPid[$pid] = (string)($r['name'] ?? ('Produit '.$pid));
+                    }
+                }
+                foreach ($prepared as $lineId => $qty) {
+                    $pid = $pidByLine[(int)$lineId] ?? 0;
+                    if ($pid > 0) {
+                        $preparedByPid[$pid] = ($preparedByPid[$pid] ?? 0.0) + max(0.0, (float)$qty);
+                    }
+                }
+            }
+
+            // 2) Récupérer le restant par produit via Odoo
+            $orderRef = null;
+            $row = $this->db->fetchAssociative('SELECT odoo_sale_order_id, odoo_name FROM sales_orders WHERE id=?', [$id]);
+            if ($row) {
+                $orderRef = !empty($row['odoo_sale_order_id']) ? (int)$row['odoo_sale_order_id'] : ((string)($row['odoo_name'] ?? ''));
+            }
+            $remainingByPid = $orderRef !== null && $orderRef !== '' ? $svc->getRemainingByProductForOrder($orderRef) : [];
+
+            // 3) Comparer et bloquer si dépassement
+            $errors = [];
+            foreach ($preparedByPid as $pid => $qty) {
+                $allowed = (float)($remainingByPid[$pid] ?? INF);
+                if ($qty > $allowed + 1e-9) {
+                    $label = $namesByPid[$pid] ?? ('Produit '.$pid);
+                    $errors[] = sprintf('%s: saisi %.2f > restant %.2f', $label, $qty, $allowed);
+                }
+            }
+            if ($errors) {
+                $this->addFlash('danger', 'Quantité préparée trop élevée pour: ' . implode(' · ', $errors));
+                return $this->redirectToRoute('admin_orders_process', ['id' => $id]);
+            }
+
+            // 3-bis) Vérifier le stock disponible (qty_available) pour éviter une validation avec stock négatif
+            //        Autoriser explicitement les saisies à 0 (Odoo créera un backorder).
+            $stockErrors = [];
+            if ($preparedByPid) {
+                try {
+                    // Lecture Odoo du stock dispo par produit
+                    $info = $svc->getProductsInfo(array_keys($preparedByPid));
+                    foreach ($preparedByPid as $pid => $q) {
+                        $avail = isset($info[$pid]['qty_available']) ? (float)$info[$pid]['qty_available'] : null;
+                        if ($avail !== null && $q > 0 && $q > $avail + 1e-9) {
+                            $label = $namesByPid[$pid] ?? ('Produit '.$pid);
+                            $stockErrors[] = sprintf('%s: saisi %.2f > stock disponible %.2f', $label, $q, $avail);
+                        }
+                    }
+                } catch (\Throwable $e) {
+                    // si la lecture stock échoue, on ne bloque pas ici
+                }
+            }
+            if ($stockErrors) {
+                $this->addFlash('danger', 'Stock insuffisant (validation impossible) pour: ' . implode(' · ', $stockErrors));
+                return $this->redirectToRoute('admin_orders_process', ['id' => $id]);
+            }
+
+            // 4) Si OK → enregistrer les quantités
+            foreach ($prepared as $lineId => $qty) {
+                if (!is_numeric($lineId)) { continue; }
                 $this->db->executeStatement(
-                    'UPDATE sales_order_lines SET prepared_qty=? WHERE id=? AND order_id=?',
-                    [$q, (int)$lineId, $id]
+                    'UPDATE sales_order_lines SET prepared_qty = ? WHERE id = ? AND order_id = ?',
+                    [max(0, (float)$qty), (int)$lineId, $id]
                 );
             }
         }
 
         try {
-            $svc->pushPreparedAndValidate($this->db, $id);
+            // Case à cocher: créer un reliquat (backorder) pour les quantités non préparées ?
+            $createBackorder = (bool)$req->request->get('create_backorder', true);
+
+            $svc->pushPreparedAndValidate($this->db, $id, $createBackorder);
 
             // Verrouiller côté Bluepicking (portable SQLite/MySQL)
             $affected = $this->db->executeStatement(
@@ -248,7 +328,26 @@ final class OrderOdooActionsController extends AbstractController
 
             $this->addFlash('success', 'Bon de livraison validé dans Odoo (stock à jour) · Entête resynchronisée.');
         } catch (Throwable $e) {
-            $this->addFlash('danger', 'Odoo: '.$e->getMessage());
+            $msg = (string)$e->getMessage();
+            // Si Odoo renvoie l’erreur “unhashable type: 'list'” (souvent liée aux quantités partielles),
+            // on force explicitement la création d’un reliquat et on informe l’utilisateur.
+            if (stripos($msg, "unhashable type: 'list'") !== false) {
+                try {
+                    $row = $this->db->fetchAssociative('SELECT odoo_sale_order_id, odoo_name FROM sales_orders WHERE id=?', [$id]);
+                    $ref = null;
+                    if ($row) {
+                        $ref = !empty($row['odoo_sale_order_id']) ? (int)$row['odoo_sale_order_id'] : ((string)($row['odoo_name'] ?? ''));
+                    }
+                    if ($ref !== null && $ref !== '') {
+                        $svc->forceBackorderForOrder($ref);
+                        $this->addFlash('info', "Validation partielle: reliquat créé automatiquement dans Odoo.");
+                        return $this->redirectToRoute('admin_orders_process', ['id' => $id]);
+                    }
+                } catch (Throwable $e2) {
+                    // si le fallback échoue, on retombe sur le message d'erreur initial
+                }
+            }
+            $this->addFlash('danger', 'Odoo: '.$msg);
         }
 
         return $this->redirectToRoute('admin_orders_process', ['id' => $id]);

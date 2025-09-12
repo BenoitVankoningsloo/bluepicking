@@ -1,4 +1,4 @@
-<?php /** @noinspection ALL */
+<?php
 declare(strict_types=1);
 
 namespace App\Controller;
@@ -13,7 +13,6 @@ use Throwable;
 
 final class AuthController extends AbstractController
 {
-    /** @noinspection PhpConditionAlreadyCheckedInspection */
     #[RateLimiter('login_form')]
     #[Route('/login', name: 'app_login', methods: ['GET','POST'])]
     public function login(AuthenticationUtils $authenticationUtils): Response
@@ -25,7 +24,6 @@ final class AuthController extends AbstractController
         try {
             $siteKey = (string) $this->getParameter('app.recaptcha_site_key');
         } catch (Throwable) {
-            /** @noinspection PhpConditionAlreadyCheckedInspection */
             $siteKey = '';
         }
 

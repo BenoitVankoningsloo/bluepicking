@@ -13,7 +13,7 @@
 .status-unknown{ background:#e2e3e5; color:#41464b; border-color:#d3d6d8; }   /* — */
 .status-draft{   background:#eef1f4; color:#495057; border-color:#d0d7de; }   /* Devis */
 .status-sent{    background:#e7f1ff; color:#084298; border-color:#b6d4fe; }   /* Devis envoyé */
-.status-sale{    background:#cfe2ff; color:#084298; border-color:#9ec5fe; }   /* Confirmée */
+.status-sale{    background:#d1e7dd; color:#0f5132; border-color:#badbcc; }   /* Confirmée */
 .status-done{    background:#d1e7dd; color:#0f5132; border-color:#badbcc; }   /* Terminée */
 .status-cancel{  background:#f8d7da; color:#842029; border-color:#f5c2c7; }   /* Annulée */
 
@@ -125,9 +125,6 @@ th .sort-head .sort-arrow.active{ opacity:1; font-weight:700; }
       <input type="hidden" name="sort"           value="{{ sort }}">
       <input type="hidden" name="dir"            value="{{ dir }}">
     </div>
-    <div class="ms-0 ms-sm-2">
-      <a class="btn btn-sm btn-outline-secondary" href="{{ path(app.request.attributes.get('_route')) }}">Réinitialiser</a>
-    </div>
   </form>
 
   {# ==== Filtres (dropdowns + dates) ==== #}
@@ -166,17 +163,16 @@ th .sort-head .sort-arrow.active{ opacity:1; font-weight:700; }
         </select>
       </div>
 
-      {# État (livraison) identique à /admin/deliveries #}
+      {# État (livraison) aligné Odoo: 4 états #}
       <div class="col-12 col-md-4 col-lg-2">
         <label class="form-label d-block">État (livraison)</label>
         <select name="delivery_state" class="form-select">
           <option value="">— État —</option>
           <option value="draft"    {{ delivery_state == 'draft'    ? 'selected' : '' }}>Brouillon</option>
-          <option value="waiting"  {{ delivery_state == 'waiting'  ? 'selected' : '' }}>En attente</option>
-          <option value="confirmed"{{ delivery_state == 'confirmed'? 'selected' : '' }}>Confirmé</option>
-          <option value="assigned" {{ delivery_state == 'assigned' ? 'selected' : '' }}>Réservé</option>
+          {# "En attente" couvre waiting et confirmed #}
+          <option value="waiting"  {{ delivery_state in ['waiting','confirmed'] ? 'selected' : '' }}>En attente</option>
+          <option value="assigned" {{ delivery_state == 'assigned' ? 'selected' : '' }}>Prêt</option>
           <option value="done"     {{ delivery_state == 'done'     ? 'selected' : '' }}>Terminé</option>
-          <option value="cancel"   {{ delivery_state == 'cancel'   ? 'selected' : '' }}>Annulé</option>
         </select>
       </div>
 
@@ -214,10 +210,7 @@ th .sort-head .sort-arrow.active{ opacity:1; font-weight:700; }
       <div class="col-12 d-flex justify-content-start justify-content-md-end">
         <div>
           <button class="btn btn-primary me-2">Filtrer</button>
-          {% set hasAny = q or status or source or placed_from or placed_to or prepared_by or carrier or delivery_state %}
-          {% if hasAny %}
-            <a class="btn btn-link" href="{{ path(app.request.attributes.get('_route')) }}">Réinitialiser</a>
-          {% endif %}
+          <a class="btn btn-outline-secondary" href="{{ path(app.request.attributes.get('_route')) }}">Réinitialiser</a>
         </div>
       </div>
     </div>
@@ -227,11 +220,61 @@ th .sort-head .sort-arrow.active{ opacity:1; font-weight:700; }
   <div class="d-flex justify-content-between align-items-center mb-2">
     <div><strong>{{ total }}</strong> résultat{{ total>1?'s':'' }}</div>
 
-    <div class="actions-bar d-flex align-items-center flex-wrap" style="gap:.5rem;">
-      <a class="btn btn-outline-primary btn-sm"
-         href="{{ path('admin_odoo_import_by_ref', {'since':'all'}) }}">
-         Importer Odoo (Total)
-      </a>
+    {% set ids = [] %}
+    {% for it in items %}{% set ids = ids|merge([it.id]) %}{% endfor %}
+    {% set idsCsv = ids|join(',') %}
+
+      {% set ids = [] %}
+      {% for it in items %}{% set ids = ids|merge([it.id]) %}{% endfor %}
+      {% set idsCsv = ids|join(',') %}
+
+      <div class="actions-bar d-flex align-items-center flex-wrap" style="gap:.5rem;">
+        <a class="btn btn-outline-primary btn-sm"
+           href="{{ path('admin_odoo_import_by_ref', {'since':'all'}) }}">
+           Importer Odoo (Total)
+        </a>
+
+        <form method="post" action="{{ path('admin_orders_refresh_states') }}" class="d-inline">
+          <input type="hidden" name="_token" value="{{ csrf_token('orders_refresh') }}">
+          <input type="hidden" name="ids" value="{{ idsCsv }}">
+          {# Conserver filtres/tri/pagination pour revenir à la même vue #}
+          <input type="hidden" name="q" value="{{ q }}">
+          <input type="hidden" name="status" value="{{ status }}">
+          <input type="hidden" name="source" value="{{ source }}">
+          <input type="hidden" name="prepared_by" value="{{ prepared_by|default('') }}">
+          <input type="hidden" name="carrier" value="{{ carrier }}">
+          <input type="hidden" name="tracking" value="{{ tracking|default('') }}">
+          <input type="hidden" name="placed_from" value="{{ placed_from }}">
+          <input type="hidden" name="placed_to" value="{{ placed_to }}">
+          <input type="hidden" name="delivery_state" value="{{ delivery_state|default('') }}">
+          <input type="hidden" name="sort" value="{{ sort }}">
+          <input type="hidden" name="dir" value="{{ dir }}">
+          <input type="hidden" name="page" value="{{ page }}">
+          <input type="hidden" name="per_page" value="{{ per_page }}">
+          <input type="hidden" name="view" value="{{ view|default('full') }}">
+          <button class="btn btn-outline-primary btn-sm">Rafraîchir états (page)</button>
+        </form>
+
+      <form method="post" action="{{ path('admin_orders_refresh_states') }}" class="d-inline">
+        <input type="hidden" name="_token" value="{{ csrf_token('orders_refresh') }}">
+        <input type="hidden" name="ids" value="{{ idsCsv }}">
+        {# Conserver les filtres/tri/pagination #}
+        <input type="hidden" name="q" value="{{ q }}">
+        <input type="hidden" name="status" value="{{ status }}">
+        <input type="hidden" name="source" value="{{ source }}">
+        <input type="hidden" name="prepared_by" value="{{ prepared_by|default('') }}">
+        <input type="hidden" name="carrier" value="{{ carrier }}">
+        <input type="hidden" name="tracking" value="{{ tracking|default('') }}">
+        <input type="hidden" name="placed_from" value="{{ placed_from }}">
+        <input type="hidden" name="placed_to" value="{{ placed_to }}">
+        <input type="hidden" name="delivery_state" value="{{ delivery_state|default('') }}">
+        <input type="hidden" name="sort" value="{{ sort }}">
+        <input type="hidden" name="dir" value="{{ dir }}">
+        <input type="hidden" name="page" value="{{ page }}">
+        <input type="hidden" name="per_page" value="{{ per_page }}">
+        <input type="hidden" name="view" value="{{ view|default('full') }}">
+        <button class="btn btn-outline-primary btn-sm">Rafraîchir états (page)</button>
+      </form>
     </div>
   </div>
 
@@ -241,10 +284,10 @@ th .sort-head .sort-arrow.active{ opacity:1; font-weight:700; }
         <tr>
           <th>{{ self.sort_link('# de commande', 'external_order_id', sort, dir) }}</th>
           <th>{{ self.sort_link('Etat commande', 'status', sort, dir) }}</th>
-          <th>Préparation</th>
-          <th>Etat Livraison</th>
-          <th>{{ self.sort_link('Doc logistique', 'delivery_status', sort, dir) }}</th>
-          <th>{{ self.sort_link('Client', 'customer_name', sort, dir) }}</th>
+          <th>{{ self.sort_link('Etat préparation', 'delivery_status', sort, dir) }}</th>
+          {% if view != 'tablet' %}
+            <th>{{ self.sort_link('Client', 'customer_name', sort, dir) }}</th>
+          {% endif %}
           <th class="d-none d-lg-table-cell">{{ self.sort_link('Préparateur', 'prepared_by', sort, dir) }}</th>
           <th class="text-end d-none d-lg-table-cell">{{ self.sort_link('Nbr d\'articles', 'item_count', sort, dir) }}</th>
           <th class="d-none d-lg-table-cell">{{ self.sort_link('Source', 'source', sort, dir) }}</th>
@@ -260,48 +303,19 @@ th .sort-head .sort-arrow.active{ opacity:1; font-weight:700; }
         {% set known = ['draft','sent','sale','done','cancel','processing','ready','shipped','delivered','error','failed','returned'] %}
         {% set key = key in known ? key : 'unknown' %}
 
-        <tr>
+        <tr data-order-id="{{ o.id }}">
           <td>
             <a href="{{ path('admin_orders_show', {'id': o.id}) }}"><code>{{ o.external_order_id }}</code></a>
           </td>
 
           {# ==== Statut (badge coloré) ==== #}
           <td>
-            <span class="status-badge status-{{ key }}" title="{{ raw ?: '—' }}">
+            <span class="status-badge status-{{ key }}" data-field="status" title="{{ raw ?: '—' }}">
               {{ statusLabels[key] ?? (raw ?: '—') }}
             </span>
           </td>
 
-          {# ==== Préparation (état des pickings: waiting/confirmed/assigned/done/cancel) ==== #}
-          <td>
-            {% set pRaw = (o.prep_state ?? '') %}
-            {% set pKey = pRaw ? pRaw|lower : '' %}
-            {% set pKnown = ['waiting','confirmed','assigned','done','cancel'] %}
-            {% set pKey = pKey in pKnown ? pKey : '' %}
-            {% set pClassMap = {
-              'waiting':'status-draft',
-              'confirmed':'status-draft',
-              'assigned':'status-processing',
-              'done':'status-done',
-              'cancel':'status-cancel'
-            } %}
-            {% set pLabelMap = {
-              'waiting':'En attente',
-              'confirmed':'En attente',
-              'assigned':'En préparation',
-              'done':'Préparée',
-              'cancel':'Annulée'
-            } %}
-            {% if pKey %}
-              <span class="status-badge {{ pClassMap[pKey] }}" title="{{ pRaw }}">
-                {{ pLabelMap[pKey] }}
-              </span>
-            {% else %}
-              <span class="status-badge status-unknown" title="—">—</span>
-            {% endif %}
-          </td>
-
-          {# ==== État Livraison (état des pickings Odoo): draft, waiting, confirmed, assigned, done, cancel ==== #}
+          {# ==== Doc logistique: afficher l'état de livraison avec libellés FR et code couleur ==== #}
           <td>
             {% set dRaw = (o.delivery_state ?? '') %}
             {% set dKey = dRaw ? dRaw|lower : '' %}
@@ -318,48 +332,25 @@ th .sort-head .sort-arrow.active{ opacity:1; font-weight:700; }
             {% set dLabelMap = {
               'draft':'Brouillon',
               'waiting':'En attente',
-              'confirmed':'Confirmé',
-              'assigned':'Réservé',
+              'confirmed':'En attente',
+              'assigned':'Prêt',
               'done':'Terminé',
               'cancel':'Annulé'
             } %}
             {% if dKey %}
-              <span class="status-badge {{ dClassMap[dKey] }}" title="{{ dRaw }}">
+              <span class="status-badge {{ dClassMap[dKey] }}" data-field="delivery_state" title="{{ dRaw }}">
                 {{ dLabelMap[dKey] }}
               </span>
             {% else %}
-              <span class="status-badge status-unknown" title="—">—</span>
+              <span class="status-badge status-unknown" data-field="delivery_state" title="—">—</span>
             {% endif %}
           </td>
 
-          {# ==== Doc logistique (sale.order.delivery_status Odoo): no, to deliver, partially_delivered, delivered ==== #}
-          <td>
-            {% set dlvRaw = (o.delivery_status ?? '') %}
-            {% set dlvKey = dlvRaw ? dlvRaw|lower : '' %}
-            {% set dlvLabelMap = {
-              'no':'Aucun',
-              'to deliver':'À livrer',
-              'partially_delivered':'Partiellement livré',
-              'delivered':'Livré'
-            } %}
-            {% set dlvClassMap = {
-              'no':'status-unknown',
-              'to deliver':'status-processing',
-              'partially_delivered':'status-ready',
-              'delivered':'status-done'
-            } %}
-            {% if dlvRaw %}
-              <span class="status-badge {{ dlvClassMap[dlvKey] ?? 'status-unknown' }}" title="{{ dlvRaw }}">
-                {{ dlvLabelMap[dlvKey] ?? dlvRaw }}
-              </span>
-            {% else %}
-              <span class="status-badge status-unknown" title="—">—</span>
-            {% endif %}
-          </td>
-
+          {% if view != 'tablet' %}
           <td>
             {{ o.customer_name }}
           </td>
+          {% endif %}
           <td class="d-none d-lg-table-cell">
             {{ o.prepared_by_label ?? '' }}
           </td>
@@ -375,12 +366,12 @@ th .sort-head .sort-arrow.active{ opacity:1; font-weight:700; }
           <td>
             <div class="btn-group btn-group-sm" role="group">
               <a class="btn btn-outline-primary"  title="Traitement"
-                 href="{{ path('admin_orders_process', {'id': o.id}) }}">Traiter</a>
+                 href="{{ path('admin_orders_process', app.request.query.all | merge({'id': o.id})) }}">Traiter</a>
             </div>
           </td>
         </tr>
       {% else %}
-        <tr><td colspan="11" class="text-center text-muted">Aucune commande.</td></tr>
+        <tr><td colspan="10" class="text-center text-muted">Aucune commande.</td></tr>
       {% endfor %}
       </tbody>
     </table>
@@ -388,5 +379,115 @@ th .sort-head .sort-arrow.active{ opacity:1; font-weight:700; }
 
   {% include 'admin/_pagination.html.twig' %}
 </div>
+
+{# === Live sync des statuts === #}
+<script>
+(function(){
+  const table = document.querySelector('table.table');
+  if (!table) return;
+
+  const statusLabelMap = {
+    draft: 'Devis',
+    sent: 'Devis envoyé',
+    sale: 'Confirmée',
+    done: 'Terminée',
+    cancel: 'Annulée',
+    processing: 'En préparation',
+    ready: 'Prête',
+    shipped: 'Expédiée',
+    delivered: 'Livrée',
+    error: 'Erreur',
+    failed: 'Échec',
+    returned: 'Retournée',
+    unknown: '—'
+  };
+  const statusClass = (key) => {
+    const known = ['draft','sent','sale','done','cancel','processing','ready','shipped','delivered','error','failed','returned'];
+    const k = (key || '').toLowerCase();
+    return 'status-badge ' + (known.includes(k) ? ('status-' + k) : 'status-unknown');
+  };
+
+  const prepLabelMap = {
+    draft:'Brouillon',
+    waiting:'En attente',
+    confirmed:'En attente',
+    assigned:'Prêt',
+    done:'Terminé',
+    cancel:'Annulé'
+  };
+  const prepClassMap = {
+    draft:'status-badge status-draft',
+    waiting:'status-badge status-processing',
+    confirmed:'status-badge status-processing',
+    assigned:'status-badge status-ready',
+    done:'status-badge status-done',
+    cancel:'status-badge status-cancel'
+  };
+
+  const endpoint = '{{ path("admin_orders_statuses") }}';
+
+  function collectIds() {
+    const rows = Array.from(table.querySelectorAll('tbody tr[data-order-id]'));
+    const ids = rows.map(r => parseInt(r.getAttribute('data-order-id') || '0', 10)).filter(v => v > 0);
+    return Array.from(new Set(ids));
+  }
+
+  function updateRow(row, payload) {
+    if (!payload) return;
+    const statusEl = row.querySelector('[data-field="status"]');
+    if (statusEl) {
+      const key = (payload.status || '').toLowerCase() || 'unknown';
+      statusEl.className = statusClass(key);
+      statusEl.textContent = statusLabelMap[key] ?? (payload.status || '—');
+      statusEl.title = payload.status || '—';
+    }
+    const prepEl = row.querySelector('[data-field="delivery_state"]');
+    if (prepEl) {
+      const k = (payload.delivery_state || '').toLowerCase();
+      if (k && prepClassMap[k]) {
+        prepEl.className = prepClassMap[k];
+        prepEl.textContent = prepLabelMap[k] || payload.delivery_state;
+        prepEl.title = payload.delivery_state || '';
+      } else {
+        prepEl.className = 'status-badge status-unknown';
+        prepEl.textContent = '—';
+        prepEl.title = '—';
+      }
+    }
+  }
+
+  let timer = null;
+  async function tick() {
+    const ids = collectIds();
+    if (ids.length === 0) return;
+    try {
+      const url = endpoint + '?ids=' + encodeURIComponent(ids.join(','));
+      const res = await fetch(url, { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' });
+      if (!res.ok) return;
+      const data = await res.json();
+      const byId = {};
+      for (const it of data) { byId[it.id] = it; }
+      const rows = Array.from(table.querySelectorAll('tbody tr[data-order-id]'));
+      for (const row of rows) {
+        const id = parseInt(row.getAttribute('data-order-id') || '0', 10);
+        if (id > 0) updateRow(row, byId[id]);
+      }
+    } catch (_) {
+      // silencieux
+    }
+  }
+
+  function start() {
+    if (timer) clearInterval(timer);
+    tick();
+    timer = setInterval(tick, 5000);
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) { tick(); }
+    });
+  }
+
+  start();
+})();
+</script>
 {% endblock %}
 
